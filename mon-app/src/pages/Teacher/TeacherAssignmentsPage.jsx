@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, X } from 'lucide-react';
 import { api } from '../../services/client';
-import { formatDate } from '../../components/utils/helpers';
+import { formatDate } from '../../components/utils/Helpers';
 import { useAuth } from '../../components/context/AuthContext';
 
 // ---------- Services API ----------

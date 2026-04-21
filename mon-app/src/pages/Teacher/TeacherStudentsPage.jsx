@@ -1,8 +1,8 @@
 // // TeacherStudentsPage.jsx
 // import { studentAPI } from '../../services/services';
 // import { Card, Table, Pagination, SearchInput, Badge, Avatar } from '../../components/common';
-// import { usePagination } from '../../components/hooks/useFetch';
-// import { getStatusColor } from '../../components/utils/helpers';
+// import { usePagination } from '../../components/hooks/UseFetch';
+// import { getStatusColor } from '../../components/utils/Helpers';
 
 // export function TeacherStudentsPage() {
 //   const { data, total, page, limit, loading, setPage, search } = usePagination(studentAPI.getAll);

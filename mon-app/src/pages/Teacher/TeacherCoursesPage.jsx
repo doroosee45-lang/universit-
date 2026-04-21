@@ -1,7 +1,7 @@
 import { BookOpen, Users, Clock } from 'lucide-react';
 import { courseAPI } from '../../services/services';
 import { Card, Badge, Spinner } from '../../components/common';
-import { useFetch } from '../../components/hooks/useFetch';
+import { useFetch } from '../../components/hooks/UseFetch';
 import { useAuth } from '../../components/context/AuthContext';
 
 export default function TeacherCoursesPage() {

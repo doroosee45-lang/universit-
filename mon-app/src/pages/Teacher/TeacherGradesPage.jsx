@@ -4,8 +4,8 @@
 // import {
 //   Button, Card, Table, Pagination, Select, Badge, Modal, useToast, Spinner, Input
 // } from '../../components/common';
-// import { usePagination, useFetch } from '../../components/hooks/useFetch';
-// import { getMention, SEMESTERS, getCurrentAcademicYear } from '../../components/utils/helpers';
+// import { usePagination, useFetch } from '../../components/hooks/UseFetch';
+// import { getMention, SEMESTERS, getCurrentAcademicYear } from '../../components/utils/Helpers';
 // import { useAuth } from '../../components/context/AuthContext';
 
 // function GradeEntryModal({ ue, students, academicYear, semester, onSave, onCancel }) {
@@ -212,7 +212,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, X } from 'lucide-react';
 import { gradeAPI, ueAPI, studentAPI } from '../../services/services';
-import { getMention, SEMESTERS, getCurrentAcademicYear } from '../../components/utils/helpers';
+import { getMention, SEMESTERS, getCurrentAcademicYear } from '../../components/utils/Helpers';
 import { useAuth } from '../../components/context/AuthContext';
 
 // ---------- Composants UI locaux ----------

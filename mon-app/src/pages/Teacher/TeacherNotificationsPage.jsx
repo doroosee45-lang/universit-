@@ -1,7 +1,7 @@
 import { notificationAPI } from '../../services/services';
 import { Button, Card, Badge, Spinner } from '../../components/common';
-import { useFetch } from '../../components/hooks/useFetch';
-import { formatDateTime } from '../../components/utils/helpers';
+import { useFetch } from '../../components/hooks/UseFetch';
+import { formatDateTime } from '../../components/utils/Helpers';
 import { Bell, CheckCheck } from 'lucide-react';
 
 const TYPE_STYLES = {

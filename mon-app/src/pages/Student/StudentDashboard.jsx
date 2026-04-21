@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BookOpen, Calendar, DollarSign, Bell, ClipboardList, Clock } from 'lucide-react';
 import { dashboardAPI } from '../../services/services';
 import { StatCard, Card, Badge, Spinner } from '../../components/common';
-import { formatDate, formatCurrency, getMention } from '../../components/utils/helpers';
+import { formatDate, formatCurrency, getMention } from '../../components/utils/Helpers';
 import { useAuth } from '../../components/context/AuthContext';
 
 export default function StudentDashboard() {

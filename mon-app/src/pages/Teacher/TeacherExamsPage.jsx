@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Calendar, MapPin, Clock, X, Users, BookOpen, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { examAPI } from '../../services/services';
 import { useAuth } from '../../components/context/AuthContext';
-import { formatDate } from '../../components/utils/helpers';
+import { formatDate } from '../../components/utils/Helpers';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatDateShort = (date) => {

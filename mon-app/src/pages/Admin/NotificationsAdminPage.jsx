@@ -4,8 +4,8 @@ import { notificationAPI } from '../../services/services';
 import {
   Button, Card, Table, Badge, Modal, Input, Select, useToast, Spinner
 } from '../../components/common';
-import { useFetch } from '../../components/hooks/useFetch';
-import { formatDateTime } from '../../components/utils/helpers';
+import { useFetch } from '../../components/hooks/UseFetch';
+import { formatDateTime } from '../../components/utils/Helpers';
 
 const TYPE_OPTS = [
   { value: 'info', label: 'Information' },

@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { gradeAPI } from '../../services/services';
 import { Button, Card, Table, Badge, Select, Input, Spinner } from '../../components/common';
-import { useFetch } from '../../components/hooks/useFetch';
+import { useFetch } from '../../components/hooks/UseFetch';
 import { useAuth } from '../../components/context/AuthContext';
-import { getMention, SEMESTERS, getCurrentAcademicYear } from '../../components/utils/helpers';
+import { getMention, SEMESTERS, getCurrentAcademicYear } from '../../components/utils/Helpers';
 
 export default function StudentGradesPage() {
   const { user } = useAuth();

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { BookOpen, Search, X } from 'lucide-react';
 import { libraryAPI } from '../../services/services';
 import { useAuth } from '../../components/context/AuthContext';
-import { formatDate } from '../../components/utils/helpers';
+import { formatDate } from '../../components/utils/Helpers';
 
 // (mêmes composants UI locaux que dans StudentLibraryPage)
 

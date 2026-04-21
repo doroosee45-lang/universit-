@@ -1,7 +1,7 @@
 import { Briefcase, Building2, Calendar, User } from 'lucide-react';
 import { internshipAPI } from '../../services/services';
 import { Card, Badge, Spinner } from '../../components/common';
-import { useFetch } from '../../components/hooks/useFetch';
+import { useFetch } from '../../components/hooks/UseFetch';
 import { useAuth } from '../../components/context/AuthContext';
 import { formatDate } from '../../components/utils/Helpers';
 

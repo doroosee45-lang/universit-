@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { dashboardAPI, reportAPI } from '../../services/services';
 import { StatCard, Card, Badge, Spinner } from '../../components/common';
-import { formatDate, formatCurrency, getMention } from '../../components/utils/helpers';
+import { formatDate, formatCurrency, getMention } from '../../components/utils/Helpers';
 import { useAuth } from '../../components/context/AuthContext';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];

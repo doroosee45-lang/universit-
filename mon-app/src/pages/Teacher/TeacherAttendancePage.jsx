@@ -3,9 +3,9 @@
 // import { CheckCircle, QrCode } from 'lucide-react';
 // import { attendanceAPI, courseAPI } from '../../services/services';
 // import { Button, Card, Table, Select, Badge, Modal, useToast, Spinner } from '../../components/common';
-// import { useFetch } from '../../components/hooks/useFetch';
+// import { useFetch } from '../../components/hooks/UseFetch';
 // import { useAuth } from '../../components/context/AuthContext';
-// import { formatDate } from '../../components/utils/helpers';
+// import { formatDate } from '../../components/utils/Helpers';
 
 // const STATUS_STYLES = {
 //   present: 'bg-green-100 text-green-700',

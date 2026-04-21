@@ -1,0 +1,4731 @@
+import { ValidatorsImpl } from 'express-validator/lib/chain';
+import { config } from './config/Cloudinary';
+
+models 
+const mongoose = require('mongoose');
+const User = require('./User.model');
+
+// Admin
+const AdminSchema = new mongoose.Schema({
+  employeeId: { type: String, unique: true },
+  department: String,
+  permissions: [String] // permissions spécifiques supplémentaires
+});
+
+// Staff (Personnel administratif)
+const StaffSchema = new mongoose.Schema({
+  employeeId: { type: String, unique: true },
+  position: {
+    type: String,
+    enum: ['scolarite', 'bibliotheque', 'finances', 'secretariat', 'informatique', 'autre'],
+    default: 'secretariat'
+  },
+  department: String
+});
+
+const Admin = User.discriminator('admin', AdminSchema);
+const Staff = User.discriminator('staff', StaffSchema);
+const SuperAdmin = User.discriminator('super_admin', new mongoose.Schema({}));
+const DepartmentHead = User.discriminator('department_head', new mongoose.Schema({
+  department: String,
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program' }
+}));
+
+module.exports = { Admin, Staff, SuperAdmin, DepartmentHead };
+
+
+const mongoose = require('mongoose');
+
+const AssignmentSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  description: String,
+  course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
+  ue: { type: mongoose.Schema.Types.ObjectId, ref: 'UE', required: true },
+  teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  academicYear: { type: String, required: true },
+  groups: [String], // groupes concernés
+  dueDate: { type: Date, required: true },
+  maxScore: { type: Number, default: 20 },
+  type: {
+    type: String,
+    enum: ['devoir_maison', 'tp', 'projet', 'expose', 'rapport', 'autre'],
+    default: 'devoir_maison'
+  },
+  isGroupWork: { type: Boolean, default: false },
+  attachments: [{ name: String, url: String }],
+  isPublished: { type: Boolean, default: false },
+  publishedAt: Date,
+  weight: { type: Number, default: 0 } // % dans la note de CC
+}, { timestamps: true });
+
+AssignmentSchema.index({ course: 1 });
+AssignmentSchema.index({ teacher: 1 });
+AssignmentSchema.index({ dueDate: 1 });
+
+module.exports = mongoose.model('Assignment', AssignmentSchema);
+
+const mongoose = require('mongoose');
+const { ATTENDANCE_STATUS } = require('../config/constants');
+
+const AttendanceSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
+  teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  date: { type: Date, required: true },
+  status: {
+    type: String,
+    enum: Object.values(ATTENDANCE_STATUS),
+    default: ATTENDANCE_STATUS.ABSENT
+  },
+  checkInTime: Date,
+  // Justificatif
+  isJustified: { type: Boolean, default: false },
+  justificationReason: String,
+  justificationProofUrl: String,
+  justificationApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  justificationApprovedAt: Date,
+  // QR Code
+  scannedViaQR: { type: Boolean, default: false },
+  notes: String
+}, { timestamps: true });
+
+// Un étudiant ne peut avoir qu'une présence par cours par date
+AttendanceSchema.index({ student: 1, course: 1, date: 1 }, { unique: true });
+AttendanceSchema.index({ course: 1, date: 1 });
+AttendanceSchema.index({ student: 1, date: 1 });
+
+module.exports = mongoose.model('Attendance', AttendanceSchema);
+
+
+
+const mongoose = require('mongoose');
+
+const CompanySchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  sector: String,
+  address: {
+    street: String,
+    city: String,
+    wilaya: String,
+    postalCode: String
+  },
+  phone: String,
+  email: String,
+  website: String,
+  // Contact principal pour les stages
+  contact: {
+    name: String,
+    position: String,
+    phone: String,
+    email: String
+  },
+  description: String,
+  isActive: { type: Boolean, default: true },
+  // Historique des stages
+  totalInterns: { type: Number, default: 0 }
+}, { timestamps: true });
+
+CompanySchema.index({ name: 'text' });
+
+module.exports = mongoose.model('Company', CompanySchema);
+
+
+const mongoose = require('mongoose');
+const { COURSE_TYPES, SEMESTERS } = require('../config/constants');
+
+const CourseSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  code: { type: String, required: true, unique: true, uppercase: true },
+  type: { type: String, enum: Object.values(COURSE_TYPES), required: true },
+  ue: { type: mongoose.Schema.Types.ObjectId, ref: 'UE', required: true },
+  teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  semester: { type: String, enum: SEMESTERS, required: true },
+  academicYear: { type: String, required: true },
+  // Groupes concernés (ex: G1, G2 pour TD/TP)
+  groups: [String],
+  // Volume horaire total
+  totalHours: { type: Number, default: 0 },
+  description: String,
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
+CourseSchema.index({ ue: 1 });
+CourseSchema.index({ teacher: 1 });
+CourseSchema.index({ program: 1, semester: 1 });
+
+module.exports = mongoose.model('Course', CourseSchema);
+
+
+
+const mongoose = require('mongoose');
+
+const DiplomaSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  diplomaNumber: { type: String, unique: true, required: true },
+  graduationDate: { type: Date, required: true },
+  academicYear: { type: String, required: true },
+  generalAverage: { type: Number, required: true },
+  mention: { type: String, required: true },
+  totalECTS: Number,
+  // Validation
+  validatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  validatedAt: Date,
+  // Documents
+  pdfUrl: String,
+  qrCodeUrl: String, // QR pour vérification
+  // Supplément au diplôme
+  diplomaSupplement: String,
+  isIssued: { type: Boolean, default: false },
+  issuedAt: Date,
+  notes: String
+}, { timestamps: true });
+
+DiplomaSchema.index({ diplomaNumber: 1 });
+DiplomaSchema.index({ student: 1 });
+
+module.exports = mongoose.model('Diploma', DiplomaSchema);
+
+
+
+const mongoose = require('mongoose');
+const { SEMESTERS } = require('../config/constants');
+
+const EnrollmentSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  ue: { type: mongoose.Schema.Types.ObjectId, ref: 'UE', required: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  academicYear: { type: String, required: true },
+  semester: { type: String, enum: SEMESTERS, required: true },
+  group: { type: String }, // ex: G1, G2
+  status: {
+    type: String,
+    enum: ['enrolled', 'validated', 'failed', 'withdrawn'],
+    default: 'enrolled'
+  },
+  enrollmentDate: { type: Date, default: Date.now }
+}, { timestamps: true });
+
+// Un étudiant ne peut s'inscrire qu'une fois par UE par année
+EnrollmentSchema.index({ student: 1, ue: 1, academicYear: 1 }, { unique: true });
+EnrollmentSchema.index({ student: 1, academicYear: 1 });
+
+module.exports = mongoose.model('Enrollment', EnrollmentSchema);
+
+
+const mongoose = require('mongoose');
+
+const EventSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: String,
+  type: {
+    type: String,
+    enum: ['conference', 'soutenance', 'reunion', 'ceremony', 'sport', 'cultural', 'autre'],
+    default: 'autre'
+  },
+  startDate: { type: Date, required: true },
+  endDate: { type: Date, required: true },
+  location: String,
+  room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room' },
+  organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  // Audience
+  isPublic: { type: Boolean, default: true },
+  targetRoles: [String],
+  targetPrograms: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Program' }],
+  // Participants
+  participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  maxParticipants: Number,
+  registrationRequired: { type: Boolean, default: false },
+  registrationDeadline: Date,
+  // Médias
+  imageUrl: String,
+  attachments: [{ name: String, url: String }],
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
+EventSchema.index({ startDate: 1 });
+EventSchema.index({ organizer: 1 });
+
+module.exports = mongoose.model('Event', EventSchema);
+
+
+const mongoose = require('mongoose');
+const { EXAM_SESSIONS } = require('../config/constants');
+
+const ExamSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  ue: { type: mongoose.Schema.Types.ObjectId, ref: 'UE', required: true },
+  course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  academicYear: { type: String, required: true },
+  session: { type: String, enum: Object.values(EXAM_SESSIONS), required: true },
+  type: {
+    type: String,
+    enum: ['partiel', 'final', 'rattrapage', 'tp', 'oral', 'projet'],
+    required: true
+  },
+  startDate: { type: Date, required: true },
+  endDate: { type: Date, required: true },
+  duration: { type: Number }, // en minutes
+  room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room' },
+  // Surveillants
+  supervisors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  groups: [String],
+  maxScore: { type: Number, default: 20 },
+  coefficient: Number,
+  instructions: String,
+  isPublished: { type: Boolean, default: false },
+  status: {
+    type: String,
+    enum: ['planned', 'ongoing', 'completed', 'cancelled'],
+    default: 'planned'
+  },
+  // PV de délibération
+  deliberationDate: Date,
+  deliberationNotes: String
+}, { timestamps: true });
+
+ExamSchema.index({ ue: 1, academicYear: 1, session: 1 });
+ExamSchema.index({ program: 1, startDate: 1 });
+
+module.exports = mongoose.model('Exam', ExamSchema);
+
+
+
+const mongoose = require('mongoose');
+const { PAYMENT_STATUS } = require('../config/constants');
+
+const FeeSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  academicYear: { type: String, required: true },
+  // Détail des frais
+  items: [{
+    category: {
+      type: String,
+      enum: ['inscription', 'scolarite', 'bibliotheque', 'laboratoire', 'stage', 'soutenance', 'cvec', 'autre'],
+      required: true
+    },
+    label: { type: String, required: true },
+    amount: { type: Number, required: true, min: 0 },
+    dueDate: Date,
+    isPaid: { type: Boolean, default: false }
+  }],
+  totalAmount: { type: Number, required: true, min: 0 },
+  paidAmount: { type: Number, default: 0, min: 0 },
+  remainingAmount: { type: Number, default: 0 },
+  status: {
+    type: String,
+    enum: Object.values(PAYMENT_STATUS),
+    default: PAYMENT_STATUS.PENDING
+  },
+  // Bourse / Exonération
+  scholarshipAmount: { type: Number, default: 0 },
+  isExempted: { type: Boolean, default: false },
+  exemptionReason: String,
+  // Dates
+  lastPaymentDate: Date,
+  notes: String
+}, { timestamps: true });
+
+// Calcul automatique du restant dû
+FeeSchema.pre('save', function (next) {
+  this.remainingAmount = Math.max(0, this.totalAmount - this.paidAmount - this.scholarshipAmount);
+  if (this.remainingAmount === 0) this.status = PAYMENT_STATUS.PAID;
+  else if (this.paidAmount > 0) this.status = PAYMENT_STATUS.PARTIAL;
+  next();
+});
+
+FeeSchema.index({ student: 1, academicYear: 1 }, { unique: true });
+FeeSchema.index({ status: 1 });
+
+module.exports = mongoose.model('Fee', FeeSchema);
+
+
+const mongoose = require('mongoose');
+const { ASSESSMENT_TYPES, EXAM_SESSIONS } = require('../config/constants');
+
+const AssessmentSchema = new mongoose.Schema({
+  type: { type: String, enum: Object.values(ASSESSMENT_TYPES), required: true },
+  label: String, // ex: "CC1", "Examen Final S1"
+  score: { type: Number, required: true, min: 0 },
+  maxScore: { type: Number, default: 20 },
+  weight: { type: Number, required: true }, // pourcentage ex: 40
+  date: Date,
+  enteredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  enteredAt: { type: Date, default: Date.now }
+});
+
+const GradeSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  ue: { type: mongoose.Schema.Types.ObjectId, ref: 'UE', required: true },
+  course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  academicYear: { type: String, required: true },
+  semester: { type: String, required: true },
+  session: { type: String, enum: Object.values(EXAM_SESSIONS), default: EXAM_SESSIONS.SESSION1 },
+  assessments: [AssessmentSchema],
+  
+  // Calculé automatiquement
+  average: { type: Number, default: 0, min: 0, max: 20 },
+  mention: String,
+  isValidated: { type: Boolean, default: false },
+  ectsObtained: { type: Number, default: 0 },
+  // Rattrapage session 2
+  session2Score: { type: Number, min: 0, max: 20 },
+  finalAverage: { type: Number, default: 0 },
+  comment: String
+}, { timestamps: true });
+
+// Index pour recherche rapide
+GradeSchema.index({ student: 1, ue: 1, academicYear: 1, session: 1 }, { unique: true });
+GradeSchema.index({ student: 1, academicYear: 1 });
+GradeSchema.index({ ue: 1, academicYear: 1 });
+
+module.exports = mongoose.model('Grade', GradeSchema);
+
+const mongoose = require('mongoose');
+
+const InternshipSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  academicYear: { type: String, required: true },
+  title: { type: String, required: true },
+  description: String,
+  startDate: { type: Date, required: true },
+  endDate: { type: Date, required: true },
+  // Encadrants
+  companyTutor: {
+    name: String,
+    position: String,
+    email: String,
+    phone: String
+  },
+  academicTutor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  // Documents
+  conventionUrl: String,
+  reportUrl: String,
+  // Évaluations
+  companyScore: { type: Number, min: 0, max: 20 },
+  academicScore: { type: Number, min: 0, max: 20 },
+  finalScore: { type: Number, min: 0, max: 20 },
+  // Soutenance
+  defenseDate: Date,
+  defenseRoom: { type: mongoose.Schema.Types.ObjectId, ref: 'Room' },
+  jury: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  juryReport: String,
+  // Statut
+  status: {
+    type: String,
+    enum: ['candidature', 'accepted', 'ongoing', 'report_submitted', 'defended', 'validated', 'failed'],
+    default: 'candidature'
+  },
+  attestationUrl: String,
+  notes: String
+}, { timestamps: true });
+
+InternshipSchema.index({ student: 1, academicYear: 1 });
+InternshipSchema.index({ company: 1 });
+InternshipSchema.index({ status: 1 });
+
+module.exports = mongoose.model('Internship', InternshipSchema);
+
+const mongoose = require('mongoose');
+
+const LibraryBookSchema = new mongoose.Schema({
+  isbn: { type: String, unique: true, sparse: true },
+  title: { type: String, required: true, trim: true },
+  author: { type: String, required: true },
+  publisher: String,
+  publicationYear: Number,
+  edition: String,
+  category: {
+    type: String,
+    enum: ['manuel', 'these', 'memoire', 'periodique', 'ebook', 'reference', 'autre'],
+    default: 'manuel'
+  },
+  domain: String, // Domaine (Informatique, Droit, Médecine...)
+  language: { type: String, default: 'Français' },
+  totalQuantity: { type: Number, required: true, min: 1 },
+  availableQuantity: { type: Number, required: true, min: 0 },
+  location: String, // Rayon / Étagère
+  coverUrl: String,
+  description: String,
+  // Ressource numérique
+  isDigital: { type: Boolean, default: false },
+  digitalUrl: String,
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
+LibraryBookSchema.index({ title: 'text', author: 'text' });
+LibraryBookSchema.index({ isbn: 1 });
+LibraryBookSchema.index({ domain: 1 });
+
+module.exports = mongoose.model('LibraryBook', LibraryBookSchema);
+
+const mongoose = require('mongoose');
+
+const LibraryLoanSchema = new mongoose.Schema({
+  book: { type: mongoose.Schema.Types.ObjectId, ref: 'LibraryBook', required: true },
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  loanDate: { type: Date, default: Date.now },
+  dueDate: { type: Date, required: true },
+  returnDate: Date,
+  // Amendes
+  finePerDay: { type: Number, default: 50 }, // en DA par jour
+  fineAmount: { type: Number, default: 0 },
+  isFinesPaid: { type: Boolean, default: false },
+  status: {
+    type: String,
+    enum: ['active', 'returned', 'overdue', 'lost'],
+    default: 'active'
+  },
+  renewalCount: { type: Number, default: 0 },
+  maxRenewals: { type: Number, default: 1 },
+  notes: String,
+  processedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+}, { timestamps: true });
+
+// Calcul automatique de l'amende
+LibraryLoanSchema.methods.calculateFine = function () {
+  if (!this.returnDate && this.dueDate < new Date()) {
+    const daysLate = Math.ceil((new Date() - this.dueDate) / (1000 * 60 * 60 * 24));
+    this.fineAmount = daysLate * this.finePerDay;
+  }
+  return this.fineAmount;
+};
+
+LibraryLoanSchema.index({ student: 1, status: 1 });
+LibraryLoanSchema.index({ book: 1 });
+LibraryLoanSchema.index({ dueDate: 1, status: 1 });
+
+module.exports = mongoose.model('LibraryLoan', LibraryLoanSchema);
+
+
+const mongoose = require('mongoose');
+const { NOTIFICATION_TYPES, ROLES } = require('../config/constants');
+
+const NotificationSchema = new mongoose.Schema({
+  recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // null = tous
+  recipientRole: { type: String, enum: Object.values(ROLES) }, // rôle ciblé
+  recipientProgram: { type: mongoose.Schema.Types.ObjectId, ref: 'Program' },
+  sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  type: {
+    type: String,
+    enum: Object.values(NOTIFICATION_TYPES),
+    default: NOTIFICATION_TYPES.INFO
+  },
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  link: String, // lien interne ex: /etudiant/grades
+  isRead: { type: Boolean, default: false },
+  readAt: Date,
+  // Pour les notifications de masse
+  isBroadcast: { type: Boolean, default: false },
+  expiresAt: Date
+}, { timestamps: true });
+
+NotificationSchema.index({ recipient: 1, isRead: 1 });
+NotificationSchema.index({ recipientRole: 1 });
+NotificationSchema.index({ createdAt: -1 });
+
+module.exports = mongoose.model('Notification', NotificationSchema);
+
+const mongoose = require('mongoose');
+
+const PaymentSchema = new mongoose.Schema({
+  fee: { type: mongoose.Schema.Types.ObjectId, ref: 'Fee', required: true },
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  amount: { type: Number, required: true, min: 0 },
+  method: {
+    type: String,
+    enum: ['cash', 'carte_bancaire', 'virement', 'cheque', 'ccp', 'autre'],
+    required: true
+  },
+  transactionId: { type: String, unique: true, sparse: true },
+  reference: String,
+  receiptNumber: { type: String, unique: true },
+  receiptUrl: String, // PDF généré
+  paymentDate: { type: Date, default: Date.now },
+  recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  notes: String
+}, { timestamps: true });
+
+PaymentSchema.index({ fee: 1 });
+PaymentSchema.index({ student: 1 });
+PaymentSchema.index({ paymentDate: -1 });
+
+module.exports = mongoose.model('Payment', PaymentSchema);
+
+const mongoose = require('mongoose');
+const { LEVELS } = require('../config/constants');
+
+const ProgramSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  code: { type: String, required: true, unique: true, uppercase: true },
+  type: {
+    type: String,
+    enum: ['Licence', 'Master', 'Doctorat', 'BUT', 'BTS', 'Ingénieur', 'Autre'],
+    required: true
+  },
+  department: { type: String, required: true },
+  description: String,
+  levels: [{ type: String, enum: LEVELS }],
+  coordinator: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  maxCapacity: { type: Number, default: 30 },
+  academicYear: { type: String, required: true },
+  duration: { type: Number, default: 6 }, // nombre de semestres
+  isActive: { type: Boolean, default: true },
+  objectives: String,
+  // Spécialités / options
+  specialties: [{ name: String, code: String }]
+}, { timestamps: true });
+
+ProgramSchema.index({ code: 1 });
+ProgramSchema.index({ department: 1 });
+
+module.exports = mongoose.model('Program', ProgramSchema);
+
+
+
+const mongoose = require('mongoose');
+
+const RoomSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  code: { type: String, required: true, unique: true },
+  building: String,
+  floor: Number,
+  type: {
+    type: String,
+    enum: ['amphi', 'salle_td', 'salle_tp', 'laboratoire', 'salle_informatique', 'salle_conference'],
+    required: true
+  },
+  capacity: { type: Number, required: true, min: 1 },
+  equipment: {
+    hasProjector: { type: Boolean, default: false },
+    hasAC: { type: Boolean, default: false },
+    hasWhiteboard: { type: Boolean, default: true },
+    hasComputers: { type: Boolean, default: false },
+    numberOfComputers: { type: Number, default: 0 }
+  },
+  isAvailable: { type: Boolean, default: true },
+  notes: String
+}, { timestamps: true });
+
+RoomSchema.index({ code: 1 });
+RoomSchema.index({ type: 1, isAvailable: 1 });
+
+module.exports = mongoose.model('Room', RoomSchema);
+
+const mongoose = require('mongoose');
+
+const ScheduleSchema = new mongoose.Schema({
+  course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
+  teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  academicYear: { type: String, required: true },
+  semester: { type: String, required: true },
+  group: String, // G1, G2 pour TD/TP
+  dayOfWeek: { type: Number, required: true, min: 0, max: 6 }, // 0=Dim, 1=Lun...6=Sam
+  startTime: { type: String, required: true }, // ex: "08:00"
+  endTime: { type: String, required: true },   // ex: "10:00"
+  // Dates effectives (pour les cours ponctuels ou modifications)
+  startDate: Date,
+  endDate: Date,
+  isRecurring: { type: Boolean, default: true },
+  // Exceptions (cours annulé, déplacé)
+  exceptions: [{
+    date: Date,
+    reason: String,
+    newRoom: { type: mongoose.Schema.Types.ObjectId, ref: 'Room' },
+    newStartTime: String,
+    newEndTime: String,
+    isCancelled: { type: Boolean, default: false }
+  }],
+  notes: String
+}, { timestamps: true });
+
+ScheduleSchema.index({ program: 1, semester: 1, academicYear: 1 });
+ScheduleSchema.index({ teacher: 1, academicYear: 1 });
+ScheduleSchema.index({ room: 1, dayOfWeek: 1 });
+
+module.exports = mongoose.model('Schedule', ScheduleSchema);
+
+const mongoose = require('mongoose');
+
+const ScholarshipSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  type: {
+    type: String,
+    enum: ['bourse_etat', 'bourse_excellence', 'aide_sociale', 'exoneration', 'autre'],
+    required: true
+  },
+  label: String,
+  percentage: { type: Number, min: 0, max: 100 }, // % de réduction
+  amount: { type: Number, min: 0 }, // montant fixe
+  academicYear: { type: String, required: true },
+  startDate: Date,
+  endDate: Date,
+  isActive: { type: Boolean, default: true },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  document: String, // URL justificatif
+  notes: String
+}, { timestamps: true });
+
+ScholarshipSchema.index({ student: 1, academicYear: 1 });
+
+module.exports = mongoose.model('Scholarship', ScholarshipSchema);
+
+
+const mongoose = require('mongoose');
+
+const SettingsSchema = new mongoose.Schema({
+  academicYear: { type: String, required: true, unique: true },
+  currentSemester: String,
+  isActive: { type: Boolean, default: false },
+  // Informations établissement
+  schoolInfo: {
+    name: String,
+    arabicName: String,
+    logo: String,
+    address: String,
+    phone: String,
+    email: String,
+    website: String,
+    rector: String
+  },
+  // Calendrier académique
+  semesterDates: [{
+    semester: String,
+    startDate: Date,
+    endDate: Date,
+    examStartDate: Date,
+    examEndDate: Date
+  }],
+  // Barème de notation
+  gradingScale: {
+    passingGrade: { type: Number, default: 10 },
+    maxGrade: { type: Number, default: 20 }
+  },
+  // Structure des frais par filière/niveau
+  feeStructure: [{
+    program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program' },
+    level: String,
+    inscriptionFee: { type: Number, default: 0 },
+    scolarityFee: { type: Number, default: 0 },
+    cvec: { type: Number, default: 0 },
+    otherFees: [{ label: String, amount: Number }]
+  }],
+  // Jours fériés
+  holidays: [{
+    name: String,
+    date: Date
+  }],
+  // Paramètres absences
+  attendanceSettings: {
+    maxAbsencePercentage: { type: Number, default: 25 },
+    alertThreshold: { type: Number, default: 20 },
+    lateToleranceMinutes: { type: Number, default: 15 }
+  },
+  // Bibliothèque
+  librarySettings: {
+    maxLoanDays: { type: Number, default: 14 },
+    maxRenewals: { type: Number, default: 1 },
+    finePerDay: { type: Number, default: 50 }
+  }
+}, { timestamps: true });
+
+module.exports = mongoose.model('Settings', SettingsSchema);
+
+const mongoose = require('mongoose');
+const User = require('./User.model');
+const { STUDENT_STATUS, LEVELS, SEMESTERS, ROLES } = require('../config/constants');
+
+const StudentSchema = new mongoose.Schema({
+  studentId: { type: String, unique: true },
+  ine: { type: String, unique: true, sparse: true }, // Identifiant National Étudiant
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  level: { type: String, enum: LEVELS, required: true },
+  currentSemester: { type: String, enum: SEMESTERS, required: true },
+  enrollmentDate: { type: Date, default: Date.now },
+  status: { type: String, enum: Object.values(STUDENT_STATUS), default: STUDENT_STATUS.ACTIVE },
+  academicYear: { type: String, required: true }, // ex: "2024-2025"
+  // Documents personnels
+  documents: [{
+    type: { type: String },
+    name: String,
+    url: String,
+    uploadedAt: { type: Date, default: Date.now }
+  }],
+  // Infos supplémentaires
+  dateOfBirth: Date,
+  placeOfBirth: String,
+  nationality: { type: String, default: 'Algérienne' },
+  // Tuteur / Parent
+  guardian: {
+    name: String,
+    phone: String,
+    email: String,
+    relation: String
+  },
+  // Carte étudiant numérique
+  studentCardUrl: String,
+  notes: String // Notes administratives
+});
+
+StudentSchema.index({ studentId: 1 });
+StudentSchema.index({ program: 1, level: 1 });
+StudentSchema.index({ status: 1 });
+
+const Student = User.discriminator('student', StudentSchema);
+module.exports = Student;
+
+
+const mongoose = require('mongoose');
+
+const SubmissionSchema = new mongoose.Schema({
+  assignment: { type: mongoose.Schema.Types.ObjectId, ref: 'Assignment', required: true },
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  submittedAt: { type: Date, default: Date.now },
+  isLate: { type: Boolean, default: false },
+  files: [{ name: String, url: String, size: Number }],
+  comment: String,
+  // Correction
+  score: { type: Number, min: 0 },
+  maxScore: { type: Number, default: 20 },
+  feedback: String,
+  correctedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  correctedAt: Date,
+  status: {
+    type: String,
+    enum: ['submitted', 'late', 'graded', 'returned'],
+    default: 'submitted'
+  }
+}, { timestamps: true });
+
+SubmissionSchema.index({ assignment: 1, student: 1 }, { unique: true });
+
+module.exports = mongoose.model('Submission', SubmissionSchema);
+
+const mongoose = require('mongoose');
+const User = require('./User.model');
+
+const TeacherSchema = new mongoose.Schema({
+  employeeId: { type: String, unique: true },
+  department: { type: String, required: true },
+  title: {
+    type: String,
+    enum: ['Professeur', 'Maître de Conférences A', 'Maître de Conférences B',
+      'Maître Assistant A', 'Maître Assistant B', 'Attaché d\'enseignement', 'Vacataire'],
+    default: 'Maître Assistant A'
+  },
+  specialties: [String],
+  courses: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
+  // UEs dont il est responsable
+  responsibleUEs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'UE' }],
+  // Informations professionnelles
+  hireDate: Date,
+  contractType: {
+    type: String,
+    enum: ['permanent', 'contractuel', 'vacataire'],
+    default: 'permanent'
+  },
+  office: String,
+  bio: String,
+  // Disponibilités
+  availabilities: [{
+    dayOfWeek: { type: Number, min: 0, max: 6 },
+    startTime: String,
+    endTime: String
+  }]
+});
+
+TeacherSchema.index({ employeeId: 1 });
+TeacherSchema.index({ department: 1 });
+
+const Teacher = User.discriminator('teacher', TeacherSchema);
+module.exports = Teacher;
+
+const mongoose = require('mongoose');
+
+const TranscriptSchema = new mongoose.Schema({
+  student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  academicYear: { type: String, required: true },
+  semester: { type: String },
+  // Détail des notes par UE
+  ueGrades: [{
+    ue: { type: mongoose.Schema.Types.ObjectId, ref: 'UE' },
+    ueCode: String,
+    ueTitle: String,
+    coefficient: Number,
+    credits: Number,
+    average: Number,
+    mention: String,
+    isValidated: Boolean,
+    ectsObtained: Number
+  }],
+  semesterAverage: Number,
+  totalECTS: Number,
+  mention: String,
+  rank: Number,
+  totalStudents: Number,
+  generatedAt: { type: Date, default: Date.now },
+  pdfUrl: String,
+  qrCode: String,
+  // Validation officielle
+  validatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  isSigned: { type: Boolean, default: false }
+}, { timestamps: true });
+
+TranscriptSchema.index({ student: 1, academicYear: 1, semester: 1 });
+
+module.exports = mongoose.model('Transcript', TranscriptSchema);
+
+const mongoose = require('mongoose');
+const { SEMESTERS } = require('../config/constants');
+
+const UESchema = new mongoose.Schema({
+  code: { type: String, required: true, unique: true, uppercase: true },
+  title: { type: String, required: true, trim: true },
+  coefficient: { type: Number, required: true, min: 1, max: 10 },
+  credits: { type: Number, required: true, min: 1, max: 12 }, // ECTS
+  semester: { type: String, enum: SEMESTERS, required: true },
+  program: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  responsibleTeacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  description: String,
+  // Volume horaire
+  volumeHours: {
+    cm: { type: Number, default: 1 }, // Cours Magistral
+    td: { type: Number, default: 1 }, // Travaux Dirigés
+    tp: { type: Number, default: 1 }  // Travaux Pratiques
+  },
+  isActive: { type: Boolean, default: true },
+  // Répartition des évaluations
+  evaluationWeights: {
+    cc: { type: Number, default: 40 },     // Contrôle Continu %
+    partiel: { type: Number, default: 20 }, // Examen Partiel %
+    final: { type: Number, default: 40 }    // Examen Final %
+  }
+}, { timestamps: true });
+
+UESchema.index({ code: 1 });
+UESchema.index({ program: 1, semester: 1 });
+
+module.exports = mongoose.model('UE', UESchema);
+
+
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const { ROLES, MAX_LOGIN_ATTEMPTS, LOCK_TIME } = require('../config/constants');
+
+const UserSchema = new mongoose.Schema({
+  firstName: { type: String, required: true, trim: true },
+  lastName: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String, required: true, minlength: 6, select: false },
+  role: { type: String, enum: Object.values(ROLES), required: true },
+  phone: { type: String, trim: true },
+  address: {
+    street: String,
+    city: String,
+    wilaya: String,
+    postalCode: String
+  },
+  profilePhoto: { type: String, default: null },
+  isActive: { type: Boolean, default: true },
+  isEmailVerified: { type: Boolean, default: false },
+  emailVerificationToken: { type: String, select: false },
+  passwordResetToken: { type: String, select: false },
+  passwordResetExpires: { type: Date, select: false },
+  loginAttempts: { type: Number, default: 0, select: false },
+  lockUntil: { type: Date, select: false },
+  lastLogin: { type: Date },
+  twoFactorEnabled: { type: Boolean, default: false },
+  twoFactorSecret: { type: String, select: false }
+}, {
+  timestamps: true,
+  discriminatorKey: 'role'
+});
+
+// Index
+UserSchema.index({ email: 1 });
+UserSchema.index({ role: 1 });
+
+// Virtual : nom complet
+UserSchema.virtual('fullName').get(function () {
+  return `${this.firstName} ${this.lastName}`;
+});
+
+// Virtual : compte verrouillé ?
+UserSchema.virtual('isLocked').get(function () {
+  return !!(this.lockUntil && this.lockUntil > Date.now());
+});
+
+// Hash du mot de passe avant sauvegarde
+UserSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+// Méthode : comparer mot de passe
+UserSchema.methods.comparePassword = async function (candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Méthode : incrémenter tentatives de connexion
+UserSchema.methods.incLoginAttempts = function () {
+  if (this.lockUntil && this.lockUntil < Date.now()) {
+    return this.updateOne({
+      $set: { loginAttempts: 1 },
+      $unset: { lockUntil: 1 }
+    });
+  }
+  const updates = { $inc: { loginAttempts: 1 } };
+  if (this.loginAttempts + 1 >= MAX_LOGIN_ATTEMPTS && !this.isLocked) {
+    updates.$set = { lockUntil: Date.now() + LOCK_TIME };
+  }
+  return this.updateOne(updates);
+};
+
+// Méthode : réinitialiser tentatives après connexion réussie
+UserSchema.methods.resetLoginAttempts = function () {
+  return this.updateOne({
+    $set: { loginAttempts: 0, lastLogin: new Date() },
+    $unset: { lockUntil: 1 }
+  });
+};
+
+// Ne pas retourner le mot de passe dans JSON
+UserSchema.methods.toJSON = function () {
+  const obj = this.toObject();
+  delete obj.password;
+  delete obj.emailVerificationToken;
+  delete obj.passwordResetToken;
+  delete obj.passwordResetExpires;
+  delete obj.loginAttempts;
+  delete obj.lockUntil;
+  delete obj.twoFactorSecret;
+  return obj;
+};
+
+const User = mongoose.model('User', UserSchema);
+module.exports = User
+
+
+
+
+
+routes 
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Attendance.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/course/:courseId', ctrl.getCourseAttendance);
+router.get('/course/:courseId/stats', ctrl.getCourseAttendanceStats);
+router.get('/student/:studentId', ctrl.getStudentAttendance);
+router.post('/', authorize('admin', 'teacher'), ctrl.takeAttendance);
+router.put('/:id/justify', ctrl.justifyAbsence);
+router.get('/qr/:courseId', authorize('admin', 'teacher'), ctrl.generateQRForCourse);
+router.post('/qr/scan', ctrl.scanQRAttendance);
+
+module.exports = router;,,, 
+
+const express = require('express');
+const router = express.Router();
+const { register, login, getMe, forgotPassword, resetPassword, verifyEmail, changePassword } = require('../controller/auth.controller');
+const { protect } = require('../middleware/auth.middleware');
+const { authLimiter } = require('../middleware/rateLimit.middleware');
+
+router.post('/register', register);
+router.post('/login', authLimiter, login);
+router.get('/me', protect, getMe);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password/:token', resetPassword);
+router.get('/verify-email/:token', verifyEmail);
+router.put('/change-password', protect, changePassword);
+
+module.exports = router;,,, 
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Course.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+router.get('/', ctrl.getAllCourses);
+router.get('/:id', ctrl.getCourseById);
+router.post('/', authorize('admin'), ctrl.createCourse);
+router.put('/:id', authorize('admin'), ctrl.updateCourse);
+router.delete('/:id', authorize('admin'), ctrl.deleteCourse);
+
+module.exports = router;,,,, 
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Exam.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/', ctrl.getAllExams);
+router.get('/:id', ctrl.getExamById);
+router.get('/:id/results', ctrl.getExamResults);
+router.post('/', authorize('admin', 'staff'), ctrl.createExam);
+router.put('/:id', authorize('admin', 'staff'), ctrl.updateExam);
+router.delete('/:id', authorize('admin'), ctrl.deleteExam);
+router.post('/:id/publish', authorize('admin', 'teacher'), ctrl.publishResults);
+
+module.exports = router;
+,,, 
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Fee.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/', authorize('admin', 'staff'), ctrl.getFees);
+router.post('/', authorize('admin', 'staff'), ctrl.createFee);
+router.post('/:id/pay', authorize('admin', 'staff'), ctrl.recordPayment);
+router.get('/:id/history', ctrl.getPaymentHistory);
+router.get('/:id/receipt', ctrl.downloadReceipt);
+router.post('/reminders', authorize('admin', 'staff'), ctrl.sendReminders);
+router.get('/stats', authorize('admin', 'staff'), ctrl.getFinancialStats);
+
+module.exports = router;,,, 
+
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Grade.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/', ctrl.getGrades);
+router.post('/', authorize('admin', 'teacher'), ctrl.upsertGrade);
+router.post('/bulk', authorize('admin', 'teacher'), ctrl.bulkUpsertGrades);
+router.post('/publish', authorize('admin', 'teacher'), ctrl.publishGrades);
+router.get('/student/:studentId/transcript', ctrl.getStudentTranscript);
+router.get('/student/:studentId/transcript/pdf', ctrl.downloadTranscriptPDF);
+router.get('/ue/:ueId/export', authorize('admin', 'teacher'), ctrl.exportUEGradesExcel);
+router.put('/:id/session2', authorize('admin', 'teacher'), ctrl.addSession2Grade);
+
+module.exports = router;
+
+
+
+const express = require('express');
+const router = express.Router();
+
+const authRoutes = require('./Auth.routes');
+const studentRoutes = require('./Student.routes');
+const teacherRoutes = require('./Teacher.routes');
+const gradeRoutes = require('./Grade.routes');
+const attendanceRoutes = require('./Attendance.routes');
+const feeRoutes = require('./Fee.routes');
+const programRoutes = require('./Program.routes');
+const ueRoutes = require('./Ue.routes');
+const courseRoutes = require('./Course.routes');
+const scheduleRoutes = require('./Schedule.routes');
+const examRoutes = require('./Exam.routes');
+const libraryRoutes = require('./Library.routes');
+const internshipRoutes = require('./Internship.routes');
+const reportRoutes = require('./Report.routes');
+const { settingsRouter, notifRouter } = require('./Misc.routes');
+
+router.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString(), version: '1.0.0' });
+});
+
+router.use('/auth', authRoutes);
+router.use('/students', studentRoutes);
+router.use('/teachers', teacherRoutes);
+router.use('/grades', gradeRoutes);
+router.use('/attendance', attendanceRoutes);
+router.use('/fees', feeRoutes);
+router.use('/programs', programRoutes);
+router.use('/ues', ueRoutes);
+router.use('/courses', courseRoutes);
+router.use('/schedules', scheduleRoutes);
+router.use('/exams', examRoutes);
+router.use('/library', libraryRoutes);
+router.use('/internships', internshipRoutes);
+router.use('/reports', reportRoutes);
+router.use('/settings', settingsRouter);
+router.use('/notifications', notifRouter);
+
+module.exports = router;,,,,, 
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Internship.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+// Internships
+router.get('/', ctrl.getAllInternships);
+router.get('/:id', ctrl.getInternshipById);
+router.post('/', authorize('admin', 'staff'), ctrl.createInternship);
+router.put('/:id', authorize('admin', 'staff'), ctrl.updateInternship);
+router.delete('/:id', authorize('admin'), ctrl.deleteInternship);
+
+// Companies
+router.get('/companies', ctrl.getAllCompanies);
+router.post('/companies', authorize('admin', 'staff'), ctrl.createCompany);
+router.put('/companies/:id', authorize('admin', 'staff'), ctrl.updateCompany);
+router.delete('/companies/:id', authorize('admin'), ctrl.deleteCompany);
+
+module.exports = router;
+
+
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Library.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+// Books
+router.get('/books', ctrl.getAllBooks);
+router.get('/books/:id', ctrl.getBookById);
+router.post('/books', authorize('admin', 'staff'), ctrl.createBook);
+router.put('/books/:id', authorize('admin', 'staff'), ctrl.updateBook);
+router.delete('/books/:id', authorize('admin'), ctrl.deleteBook);
+
+// Loans
+router.get('/loans', authorize('admin', 'staff'), ctrl.getActiveLoans);
+router.get('/loans/overdue', authorize('admin', 'staff'), ctrl.getOverdueLoans);
+router.post('/loans/borrow', authorize('admin', 'staff'), ctrl.borrowBook);
+router.put('/loans/:loanId/return', authorize('admin', 'staff'), ctrl.returnBook);
+
+module.exports = router;
+
+
+
+const express = require('express');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+const settingsCtrl = require('../controller/Settings.controller');
+const notifCtrl = require('../controller/Notification.controller');
+
+const settingsRouter = express.Router();
+settingsRouter.use(protect);
+settingsRouter.get('/', settingsCtrl.getSettings);
+settingsRouter.put('/', authorize('admin'), settingsCtrl.updateSettings);
+settingsRouter.put('/academic-year', authorize('admin'), settingsCtrl.updateAcademicYear);
+
+const notifRouter = express.Router();
+notifRouter.use(protect);
+notifRouter.get('/', notifCtrl.getUserNotifications);
+notifRouter.get('/unread-count', notifCtrl.getUnreadCount);
+notifRouter.put('/mark-all-read', notifCtrl.markAllAsRead);
+notifRouter.put('/:id/read', notifCtrl.markAsRead);
+notifRouter.delete('/:id', notifCtrl.deleteNotification);
+
+module.exports = { settingsRouter, notifRouter };,,, 
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Program.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/', ctrl.getAllPrograms);
+router.get('/:id', ctrl.getProgramById);
+router.get('/:id/ues', ctrl.getProgramUEs);
+router.post('/', authorize('admin'), ctrl.createProgram);
+router.put('/:id', authorize('admin'), ctrl.updateProgram);
+router.delete('/:id', authorize('admin'), ctrl.deleteProgram);
+
+module.exports = router;
+
+
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Report.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/stats', ctrl.getGlobalStats);
+router.get('/transcript/:studentId', ctrl.getStudentTranscript);
+router.get('/transcript/:studentId/pdf', ctrl.exportTranscriptPDF);
+router.get('/attendance', authorize('admin', 'staff', 'teacher'), ctrl.getAttendanceReport);
+router.get('/financial', authorize('admin', 'staff'), ctrl.getFinancialReport);
+router.get('/students/export', authorize('admin', 'staff'), ctrl.exportStudentsExcel);
+
+module.exports = router;
+
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Schedule.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/', ctrl.getAllSchedules);
+router.get('/:id', ctrl.getScheduleById);
+router.get('/teacher/:teacherId', ctrl.getTeacherSchedule);
+router.post('/', authorize('admin', 'staff'), ctrl.createSchedule);
+router.put('/:id', authorize('admin', 'staff'), ctrl.updateSchedule);
+router.delete('/:id', authorize('admin', 'staff'), ctrl.deleteSchedule);
+
+module.exports = router;
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Student.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+const { uploadExcel, uploadProfile } = require('../middleware/Upload.middleware');
+
+router.use(protect);
+
+router.get('/', authorize('admin', 'staff', 'teacher'), ctrl.getAllStudents);
+router.get('/me/profile', ctrl.getMyProfile);
+router.get('/export/excel', authorize('admin', 'staff'), ctrl.exportStudents);
+router.post('/import/excel', authorize('admin', 'staff'), uploadExcel, ctrl.importStudents);
+router.get('/:id', ctrl.getStudentById);
+router.post('/', authorize('admin', 'staff'), ctrl.createStudent);
+router.put('/:id', authorize('admin', 'staff'), ctrl.updateStudent);
+router.delete('/:id', authorize('admin'), ctrl.deleteStudent);
+
+module.exports = router;
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Teacher.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+const { uploadProfile } = require('../middleware/Upload.middleware');
+
+router.use(protect);
+router.get('/', ctrl.getAllTeachers);
+router.get('/:id', ctrl.getTeacherById);
+router.post('/', authorize('admin'), ctrl.createTeacher);
+router.put('/:id', authorize('admin', 'staff'), ctrl.updateTeacher);
+router.delete('/:id', authorize('admin'), ctrl.deleteTeacher);
+
+module.exports = router;
+
+
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controller/Ue.controller');
+const { protect } = require('../middleware/Auth.middleware');
+const { authorize } = require('../middleware/Role.middleware');
+
+router.use(protect);
+
+router.get('/', ctrl.getAllUEs);
+router.get('/:id', ctrl.getUEById);
+router.get('/:id/courses', ctrl.getUECourses);
+router.post('/', authorize('admin'), ctrl.createUE);
+router.put('/:id', authorize('admin'), ctrl.updateUE);
+router.delete('/:id', authorize('admin'), ctrl.deleteUE);
+
+module.exports = router;
+
+
+
+
+
+
+
+middleware
+authmiddlare
+const jwt = require('jsonwebtoken');
+const User = require('../models/User.model');
+const { unauthorized } = require('../utils/apiResponse');
+
+const protect = async (req, res, next) => {
+  try {
+    let token;
+
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (!token) {
+      return unauthorized(res, 'Accès refusé. Token manquant.');
+    }
+
+    // Vérifier le token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Récupérer l'utilisateur (pas besoin de +isActive)
+    const user = await User.findById(decoded.id);
+    
+    if (!user) return unauthorized(res, 'Utilisateur introuvable.');
+    if (!user.isActive) return unauthorized(res, 'Compte désactivé.');
+
+    req.user = user;
+    next();
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') return unauthorized(res, 'Token invalide.');
+    if (error.name === 'TokenExpiredError') return unauthorized(res, 'Token expiré. Reconnectez-vous.');
+    next(error);
+  }
+};
+
+// Middleware optionnel
+const optionalAuth = async (req, res, next) => {
+  try {
+    let token;
+    if (req.headers.authorization?.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = await User.findById(decoded.id);
+    }
+    next();
+  } catch {
+    next();
+  }
+};
+
+module.exports = { protect, optionalAuth };,, 
+
+
+errorMiddleware
+const logger = require('../utils/logger');
+
+const errorMiddleware = (err, req, res, next) => {
+  let statusCode = err.statusCode || 500;
+  let message = err.message || 'Erreur interne du serveur';
+
+  // Log l'erreur
+  logger.error(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+
+  // Erreur Mongoose : ID invalide
+  if (err.name === 'CastError') {
+    message = `Ressource introuvable pour l'id: ${err.value}`;
+    statusCode = 404;
+  }
+
+  // Erreur Mongoose : doublon (unique)
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue)[0];
+    message = `La valeur "${err.keyValue[field]}" existe déjà pour le champ "${field}".`;
+    statusCode = 400;
+  }
+
+  // Erreur Mongoose : validation
+  if (err.name === 'ValidationError') {
+    message = Object.values(err.errors).map(e => e.message).join(', ');
+    statusCode = 400;
+  }
+
+  // JWT invalide
+  if (err.name === 'JsonWebTokenError') {
+    message = 'Token invalide.';
+    statusCode = 401;
+  }
+
+  if (err.name === 'TokenExpiredError') {
+    message = 'Token expiré.';
+    statusCode = 401;
+  }
+
+  res.status(statusCode).json({
+    success: false,
+    message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+};
+
+module.exports = errorMiddleware;
+,,, 
+loggerMiddleware
+
+const logger = require('../utils/logger');
+
+const loggerMiddleware = (req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const logData = {
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip,
+      user: req.user ? req.user._id : 'anonymous'
+    };
+    if (res.statusCode >= 400) logger.warn(JSON.stringify(logData));
+    else logger.info(JSON.stringify(logData));
+  });
+  next();
+};
+
+module.exports = loggerMiddleware;
+
+
+
+RatelimiterMiddleware
+const rateLimit = require('express-rate-limit');
+
+// Limiteur global
+const globalLimiter = rateLimit({
+  windowMs: (process.env.RATE_LIMIT_WINDOW || 15) * 60 * 1000,
+  max: process.env.RATE_LIMIT_MAX || 100,
+  message: { success: false, message: 'Trop de requêtes. Réessayez dans quelques minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Limiteur strict pour l'authentification
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { success: false, message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' }
+});
+
+// Limiteur pour la création de compte
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 heure
+  max: 5,
+  message: { success: false, message: 'Trop de créations de compte. Réessayez plus tard.' }
+});
+
+// Limiteur pour les exports PDF/Excel
+const exportLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  message: { success: false, message: 'Trop d\'exports. Attendez une minute.' }
+});
+
+module.exports = { globalLimiter, authLimiter, registerLimiter, exportLimiter };
+
+
+roleMddleware
+const { forbidden } = require('../utils/apiResponse');
+const { ROLES } = require('../config/constants');
+const UploadMiddleware = require('./Upload.middleware');
+
+// Vérifie que l'utilisateur a l'un des rôles autorisés
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) return forbidden(res, 'Non authentifié.');
+    if (!roles.includes(req.user.role)) {
+      return forbidden(res, `Rôle "${req.user.role}" non autorisé pour cette action.`);
+    }
+    next();
+  };
+};
+
+// Raccourcis pratiques
+const isAdmin = authorize(ROLES.ADMIN, ROLES.SUPER_ADMIN);
+const isSuperAdmin = authorize(ROLES.SUPER_ADMIN);
+const isTeacher = authorize(ROLES.TEACHER, ROLES.ADMIN, ROLES.SUPER_ADMIN);
+const isStudent = authorize(ROLES.STUDENT);
+const isAdminOrTeacher = authorize(ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.TEACHER, ROLES.DEPARTMENT_HEAD);
+const isStaff = authorize(ROLES.STAFF, ROLES.ADMIN, ROLES.SUPER_ADMIN);
+
+// Vérifie que l'utilisateur accède à ses propres données ou est admin
+const isSelfOrAdmin = (req, res, next) => {
+  const targetId = req.params.id || req.params.studentId;
+  const isOwnData = req.user._id.toString() === targetId;
+  const isAdminUser = [ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(req.user.role);
+
+  if (!isOwnData && !isAdminUser) {
+    return forbidden(res, 'Accès non autorisé à ces données.');
+  }
+  next();
+};
+
+module.exports = { authorize, isAdmin, isSuperAdmin, isTeacher, isStudent, isAdminOrTeacher, isStaff, isSelfOrAdmin };
+
+
+UploadMiddleware
+const multer = require('multer');
+const path = require('path');
+
+// Stockage disque local
+const createDiskStorage = (folder) => multer.diskStorage({
+  destination: (req, file, cb) => cb(null, `uploads/${folder}/`),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  }
+});
+
+// Filtre : images uniquement
+const imageFilter = (req, file, cb) => {
+  const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  if (allowed.includes(file.mimetype)) cb(null, true);
+  else cb(new Error('Seules les images JPG/PNG/WEBP sont acceptées.'), false);
+};
+
+// Filtre : documents (PDF, Word, images)
+const documentFilter = (req, file, cb) => {
+  const allowed = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/jpeg', 'image/png'
+  ];
+  if (allowed.includes(file.mimetype)) cb(null, true);
+  else cb(new Error('Format non accepté. PDF, Word ou image uniquement.'), false);
+};
+
+// Filtre : Excel/CSV
+const excelFilter = (req, file, cb) => {
+  const allowed = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'text/csv'
+  ];
+  if (allowed.includes(file.mimetype)) cb(null, true);
+  else cb(new Error('Format non accepté. Excel ou CSV uniquement.'), false);
+};
+
+// Upload photo de profil
+const uploadProfile = multer({
+  storage: createDiskStorage('profiles'),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: imageFilter
+}).single('photo');
+
+// Upload document
+const uploadDocument = multer({
+  storage: createDiskStorage('documents'),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: documentFilter
+}).single('document');
+
+// Upload devoir (multiple fichiers)
+const uploadAssignment = multer({
+  storage: createDiskStorage('assignments'),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: documentFilter
+}).array('files', 5);
+
+// Upload Excel
+const uploadExcel = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: excelFilter
+}).single('file');
+
+// Wrapper pour gérer les erreurs multer
+const handleUpload = (upload) => (req, res, next) => {
+  upload(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ success: false, message: 'Fichier trop volumineux.' });
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    if (err) return res.status(400).json({ success: false, message: err.message });
+    next();
+  });
+};
+
+module.exports = {
+  uploadProfile: handleUpload(uploadProfile),
+  uploadDocument: handleUpload(uploadDocument),
+  uploadAssignment: handleUpload(uploadAssignment),
+  uploadExcel: handleUpload(uploadExcel)
+};
+
+
+validationMiddleware
+const { validationResult } = require('express-validator');
+const { badRequest } = require('../utils/apiResponse');
+
+const validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return badRequest(res, 'Données invalides.', errors.array().map(e => ({
+      field: e.path,
+      message: e.msg
+    })));
+  }
+  next();
+};
+
+module.exports = { validate };
+
+
+
+controller
+attanadance 
+const Attendance = require('../models/Attendance.model');
+const Course = require('../models/Course.model');
+const Student = require('../models/Student.model');
+const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
+const { getPagination } = require('../utils/helpers');
+const { sendAbsenceAlert } = require('../services/email.service');
+const { generateAttendanceQR } = require('../services/qrcode.service');
+const { sendNotification } = require('../services/notification.service');
+
+// POST /api/attendance  - Prendre une présence
+const takeAttendance = async (req, res, next) => {
+  try {
+    const { course, date, attendances } = req.body;
+    // attendances = [{ student, status, checkInTime }]
+
+    const results = [];
+    for (const a of attendances) {
+      const record = await Attendance.findOneAndUpdate(
+        { student: a.student, course, date: new Date(date) },
+        { student: a.student, course, date: new Date(date), teacher: req.user._id, status: a.status, checkInTime: a.checkInTime },
+        { new: true, upsert: true }
+      );
+      results.push(record);
+
+      // Vérifier seuil d'absences
+      if (a.status === 'absent') {
+        const absenceCount = await Attendance.countDocuments({
+          student: a.student, course, status: { $in: ['absent'] }
+        });
+        if (absenceCount >= 3) {
+          const student = await Student.findById(a.student);
+          const courseData = await Course.findById(course).select('title');
+          if (student) {
+            await sendAbsenceAlert(student, courseData, absenceCount);
+            await sendNotification({
+              recipient: a.student,
+              type: 'warning',
+              title: 'Alerte absences',
+              message: `Vous avez ${absenceCount} absences dans le cours ${courseData?.title}.`,
+              link: '/etudiant/attendance'
+            });
+          }
+        }
+      }
+    }
+
+    return success(res, { count: results.length }, 'Présences enregistrées.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/attendance/course/:courseId  - Liste présences d'un cours
+const getCourseAttendance = async (req, res, next) => {
+  try {
+    const { date } = req.query;
+    const filter = { course: req.params.courseId };
+    if (date) filter.date = new Date(date);
+
+    const records = await Attendance.find(filter)
+      .populate('student', 'firstName lastName studentId')
+      .sort({ 'student.lastName': 1 });
+
+    return success(res, records);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/attendance/student/:studentId  - Historique présences d'un étudiant
+const getStudentAttendance = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = getPagination(req.query);
+    const studentId = req.user.role === 'student' ? req.user._id : req.params.studentId;
+    const filter = { student: studentId };
+    if (req.query.course) filter.course = req.query.course;
+
+    const [records, total] = await Promise.all([
+      Attendance.find(filter)
+        .populate('course', 'title type')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limit),
+      Attendance.countDocuments(filter)
+    ]);
+
+    // Statistiques
+    const stats = await Attendance.aggregate([
+      { $match: filter },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    return success(res, { records, stats, pagination: { total, page, limit } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/attendance/:id/justify  - Justifier une absence
+const justifyAbsence = async (req, res, next) => {
+  try {
+    const { reason, proofUrl } = req.body;
+    const record = await Attendance.findById(req.params.id);
+    if (!record) return notFound(res, 'Enregistrement introuvable.');
+
+    record.isJustified = true;
+    record.justificationReason = reason;
+    record.justificationProofUrl = proofUrl || req.file?.path;
+    record.status = 'justified';
+    await record.save();
+
+    return success(res, record, 'Absence justifiée.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/attendance/course/:courseId/stats  - Stats présence par cours
+const getCourseAttendanceStats = async (req, res, next) => {
+  try {
+    const stats = await Attendance.aggregate([
+      { $match: { course: require('mongoose').Types.ObjectId(req.params.courseId) } },
+      {
+        $group: {
+          _id: '$student',
+          total: { $sum: 1 },
+          present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+          absent: { $sum: { $cond: [{ $eq: ['$status', 'absent'] }, 1, 0] } },
+          justified: { $sum: { $cond: [{ $eq: ['$status', 'justified'] }, 1, 0] } },
+          late: { $sum: { $cond: [{ $eq: ['$status', 'late'] }, 1, 0] } }
+        }
+      },
+      {
+        $addFields: {
+          attendanceRate: { $multiply: [{ $divide: ['$present', '$total'] }, 100] }
+        }
+      },
+      { $sort: { attendanceRate: -1 } }
+    ]);
+
+    return success(res, stats);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/attendance/qr/:courseId  - Générer QR Code émargement
+const generateQRForCourse = async (req, res, next) => {
+  try {
+    const qr = await generateAttendanceQR(req.params.courseId, new Date(), req.user._id);
+    return success(res, { qrCode: qr, expiresIn: '15 minutes' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/attendance/qr/scan  - Scanner QR Code (étudiant)
+const scanQRAttendance = async (req, res, next) => {
+  try {
+    const { courseId, date, teacherId, expires } = req.body;
+    if (new Date(expires) < new Date()) return badRequest(res, 'QR Code expiré.');
+
+    const existing = await Attendance.findOne({
+      student: req.user._id, course: courseId, date: new Date(date)
+    });
+    if (existing) return badRequest(res, 'Présence déjà enregistrée.');
+
+    await Attendance.create({
+      student: req.user._id, course: courseId,
+      teacher: teacherId, date: new Date(date),
+      status: 'present', scannedViaQR: true, checkInTime: new Date()
+    });
+
+    return success(res, null, 'Présence enregistrée via QR Code.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  takeAttendance, getCourseAttendance, getStudentAttendance,
+  justifyAbsence, getCourseAttendanceStats, generateQRForCourse, scanQRAttendance
+};;;;; 
+
+Authcontroller
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const User = require('../models/User.model');
+const Student = require('../models/Student.model');
+const Program = require('../models/Program.model');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email.service');
+const { success, created, error, unauthorized, badRequest } = require('../utils/apiResponse');
+const { generateToken } = require('../utils/helpers');
+
+// Générer un JWT
+const signToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE || '7d'
+  });
+};
+
+// POST /api/auth/register
+const register = async (req, res, next) => {
+  try {
+    const { firstName, lastName, email, password, role } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return badRequest(res, 'Cet email est déjà utilisé.');
+
+    const verificationToken = generateToken();
+    
+    // Base des données utilisateur
+    const userData = {
+      firstName,
+      lastName,
+      email,
+      password,
+      role: role || 'student',
+      emailVerificationToken: crypto.createHash('sha256').update(verificationToken).digest('hex')
+    };
+    
+    // Si c'est un étudiant, ajouter les champs requis avec valeurs par défaut
+    if (userData.role === 'student') {
+      // Chercher ou créer un programme par défaut
+      let defaultProgram = await Program.findOne();
+      if (!defaultProgram) {
+        defaultProgram = await Program.create({
+          code: 'DEFAULT',
+          name: 'Programme Général',
+          type: 'Licence',
+          level: 'Licence',
+          durationYears: 3,
+          department: 'Général',
+          academicYear: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1)
+        });
+      }
+      
+      userData.program = defaultProgram._id;
+      userData.level = 'L1';
+      userData.currentSemester = 'S1';
+      userData.academicYear = new Date().getFullYear() + '-' + (new Date().getFullYear() + 1);
+      userData.enrollmentDate = new Date();
+    }
+    
+    const user = await User.create(userData);
+
+    await sendVerificationEmail(user, verificationToken);
+    return created(res, { id: user._id, email: user.email }, 'Compte créé. Vérifiez votre email.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/login
+const login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
+    
+    console.log('Email reçu:', email);
+    console.log('Utilisateur trouvé:', user ? user.email : 'NON');
+    
+    if (!user) {
+      return unauthorized(res, 'Email ou mot de passe incorrect.');
+    }
+
+    if (user.isLocked === true) {
+      console.log('Compte verrouillé jusqu\'au:', user.lockUntil);
+      return unauthorized(res, 'Compte temporairement verrouillé. Réessayez dans 2 heures.');
+    }
+
+    if (!user.isActive) {
+      return unauthorized(res, 'Compte désactivé. Contactez l\'administration.');
+    }
+
+    const isMatch = await user.comparePassword(password);
+    console.log('Mot de passe valide:', isMatch);
+    
+    if (!isMatch) {
+      await user.incLoginAttempts();
+      return unauthorized(res, 'Email ou mot de passe incorrect.');
+    }
+
+    await user.resetLoginAttempts();
+
+    const token = signToken(user._id, user.role);
+    return success(res, {
+      token,
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto
+      }
+    }, 'Connexion réussie.');
+  } catch (err) {
+    console.error('Erreur login:', err);
+    next(err);
+  }
+};
+
+// GET /api/auth/me
+const getMe = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).populate('program', 'name code');
+    return success(res, user);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/forgot-password
+const forgotPassword = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+      return success(res, null, 'Si cet email existe, un lien de réinitialisation a été envoyé.');
+    }
+
+    const resetToken = generateToken();
+    user.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+    await user.save({ validateBeforeSave: false });
+
+    await sendPasswordResetEmail(user, resetToken);
+    return success(res, null, 'Email de réinitialisation envoyé.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/reset-password/:token
+const resetPassword = async (req, res, next) => {
+  try {
+    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() }
+    }).select('+passwordResetToken +passwordResetExpires');
+
+    if (!user) return badRequest(res, 'Token invalide ou expiré.');
+
+    user.password = req.body.password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    const token = signToken(user._id, user.role);
+    return success(res, { token }, 'Mot de passe réinitialisé avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/auth/verify-email/:token
+const verifyEmail = async (req, res, next) => {
+  try {
+    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+    const user = await User.findOne({ emailVerificationToken: hashedToken }).select('+emailVerificationToken');
+
+    if (!user) return badRequest(res, 'Token de vérification invalide.');
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    return success(res, null, 'Email vérifié avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/auth/change-password
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.user._id).select('+password');
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) return badRequest(res, 'Mot de passe actuel incorrect.');
+
+    user.password = newPassword;
+    await user.save();
+
+    return success(res, null, 'Mot de passe modifié avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { register, login, getMe, forgotPassword, resetPassword, verifyEmail, changePassword };
+
+
+Dashboardcontroller
+
+const Student = require('../models/Student.model');
+const Teacher = require('../models/Teacher.model');
+const Grade = require('../models/Grade.model');
+const Attendance = require('../models/Attendance.model');
+const Fee = require('../models/Fee.model');
+const Course = require('../models/Course.model');
+const Exam = require('../models/Exam.model');
+const Event = require('../models/Event.model');
+const Assignment = require('../models/Assignment.model');
+const LibraryLoan = require('../models/LibraryLoan.model');
+const Notification = require('../models/Notification.model');
+const { success } = require('../utils/apiResponse');
+const { getCurrentAcademicYear } = require('../utils/helpers');
+
+// GET /api/dashboard/admin  - KPIs admin
+const getAdminDashboard = async (req, res, next) => {
+  try {
+    const academicYear = req.query.academicYear || getCurrentAcademicYear();
+
+    const [
+      totalStudents, activeStudents, totalTeachers,
+      totalRevenue, pendingFees, overdueLoans,
+      upcomingExams, recentEvents
+    ] = await Promise.all([
+      Student.countDocuments(),
+      Student.countDocuments({ status: 'active', academicYear }),
+      Teacher.countDocuments({ isActive: true }),
+      Fee.aggregate([
+        { $match: { academicYear } },
+        { $group: { _id: null, total: { $sum: '$paidAmount' } } }
+      ]),
+      Fee.countDocuments({ status: { $in: ['pending', 'overdue'] }, academicYear }),
+      LibraryLoan.countDocuments({ status: 'overdue' }),
+      Exam.find({ startDate: { $gte: new Date() }, status: 'planned' })
+        .populate('ue', 'title').populate('room', 'name')
+        .limit(5).sort({ startDate: 1 }),
+      Event.find({ startDate: { $gte: new Date() }, isActive: true })
+        .limit(5).sort({ startDate: 1 })
+    ]);
+
+    // Taux de réussite global
+    const gradeStats = await Grade.aggregate([
+      { $match: { academicYear } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          validated: { $sum: { $cond: ['$isValidated', 1, 0] } }
+        }
+      }
+    ]);
+    const successRate = gradeStats[0]
+      ? Math.round((gradeStats[0].validated / gradeStats[0].total) * 100)
+      : 0;
+
+    // Étudiants par filière
+    const studentsByProgram = await Student.aggregate([
+      { $match: { academicYear } },
+      { $group: { _id: '$program', count: { $sum: 1 } } },
+      {
+        $lookup: {
+          from: 'programs', localField: '_id', foreignField: '_id',
+          as: 'program'
+        }
+      },
+      { $unwind: { path: '$program', preserveNullAndEmpty: true } },
+      { $project: { programName: '$program.name', count: 1 } },
+      { $sort: { count: -1 } }
+    ]);
+
+    return success(res, {
+      kpis: {
+        totalStudents,
+        activeStudents,
+        totalTeachers,
+        totalRevenue: totalRevenue[0]?.total || 0,
+        pendingFees,
+        overdueLoans,
+        successRate
+      },
+      studentsByProgram,
+      upcomingExams,
+      recentEvents
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/dashboard/student  - Dashboard étudiant
+const getStudentDashboard = async (req, res, next) => {
+  try {
+    const studentId = req.user._id;
+    const academicYear = getCurrentAcademicYear();
+
+    const [
+      myGrades, myAttendance, myFee,
+      upcomingExams, pendingAssignments, notifications
+    ] = await Promise.all([
+      Grade.find({ student: studentId, academicYear })
+        .populate('ue', 'code title coefficient credits'),
+      Attendance.aggregate([
+        { $match: { student: studentId } },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      Fee.findOne({ student: studentId, academicYear })
+        .select('totalAmount paidAmount remainingAmount status'),
+      Exam.find({
+        startDate: { $gte: new Date() },
+        status: 'planned', isPublished: true
+      }).populate('ue', 'title').limit(5).sort({ startDate: 1 }),
+      Assignment.find({
+        dueDate: { $gte: new Date() },
+        isPublished: true
+      }).populate('course', 'title').limit(5).sort({ dueDate: 1 }),
+      Notification.find({ recipient: studentId, isRead: false }).limit(5).sort({ createdAt: -1 })
+    ]);
+
+    // Calcul de la moyenne générale
+    const avg = myGrades.length > 0
+      ? myGrades.reduce((sum, g) => sum + g.finalAverage * g.ue.coefficient, 0) /
+        myGrades.reduce((sum, g) => sum + g.ue.coefficient, 0)
+      : 0;
+
+    const attendanceStats = {};
+    myAttendance.forEach(a => { attendanceStats[a._id] = a.count; });
+
+    return success(res, {
+      generalAverage: Math.round(avg * 100) / 100,
+      grades: myGrades,
+      attendanceStats,
+      fee: myFee,
+      upcomingExams,
+      pendingAssignments,
+      unreadNotifications: notifications.length
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/dashboard/teacher  - Dashboard enseignant
+const getTeacherDashboard = async (req, res, next) => {
+  try {
+    const teacherId = req.user._id;
+
+    const [
+      myCourses, pendingGrades, todayClasses,
+      recentAbsences, notifications
+    ] = await Promise.all([
+      Course.find({ teacher: teacherId, isActive: true })
+        .populate('ue', 'code title'),
+      Grade.countDocuments({
+        'assessments.enteredBy': teacherId,
+        average: { $exists: false }
+      }),
+      Course.find({ teacher: teacherId }).select('title type').limit(5),
+      Attendance.find({ teacher: teacherId, status: 'absent', date: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } })
+        .populate('student', 'firstName lastName').limit(10),
+      Notification.find({ recipient: teacherId, isRead: false }).limit(5).sort({ createdAt: -1 })
+    ]);
+
+    return success(res, {
+      totalCourses: myCourses.length,
+      myCourses,
+      pendingGrades,
+      todayClasses,
+      recentAbsences,
+      unreadNotifications: notifications.length
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAdminDashboard, getStudentDashboard, getTeacherDashboard };
+
+
+
+coursecontroller
+const Course = require('../models/Course.model');
+const { successResponse, errorResponse, paginatedResponse } = require('../utils/apiResponse');
+
+exports.getAllCourses = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, ue, teacher, type } = req.query;
+    const filter = {};
+    if (ue) filter.ue = ue;
+    if (teacher) filter.teacher = teacher;
+    if (type) filter.type = type;
+
+    const total = await Course.countDocuments(filter);
+    const courses = await Course.find(filter)
+      .populate('ue', 'name code')
+      .populate('teacher', 'firstName lastName email')
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+
+    return paginatedResponse(res, courses, total, page, limit);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getCourseById = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id)
+      .populate('ue', 'name code')
+      .populate('teacher', 'firstName lastName email');
+    if (!course) return errorResponse(res, 'Cours introuvable', 404);
+    return successResponse(res, course);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.createCourse = async (req, res) => {
+  try {
+    const course = await Course.create(req.body);
+    return successResponse(res, course, 'Cours crÃ©Ã©', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateCourse = async (req, res) => {
+  try {
+    const course = await Course.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!course) return errorResponse(res, 'Cours introuvable', 404);
+    return successResponse(res, course, 'Cours mis Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteCourse = async (req, res) => {
+  try {
+    await Course.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'Cours supprimÃ©');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+;;;;   
+
+examController
+
+const Exam = require('../models/Exam.model');
+const Grade = require('../models/Grade.model');
+const { successResponse, errorResponse, paginatedResponse } = require('../utils/apiResponse');
+
+exports.getAllExams = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, program, course, type, status } = req.query;
+    const filter = {};
+    if (program) filter.program = program;
+    if (course) filter.course = course;
+    if (type) filter.type = type;
+    if (status) filter.status = status;
+
+    const total = await Exam.countDocuments(filter);
+    const exams = await Exam.find(filter)
+      .populate('course', 'name code')
+      .populate('room', 'name building')
+      .populate('supervisors', 'firstName lastName')
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .sort({ date: 1 });
+
+    return paginatedResponse(res, exams, total, page, limit);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getExamById = async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.id)
+      .populate('course room supervisors');
+    if (!exam) return errorResponse(res, 'Examen introuvable', 404);
+    return successResponse(res, exam);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.createExam = async (req, res) => {
+  try {
+    const exam = await Exam.create(req.body);
+    return successResponse(res, exam, 'Examen planifiÃ©', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateExam = async (req, res) => {
+  try {
+    const exam = await Exam.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!exam) return errorResponse(res, 'Examen introuvable', 404);
+    return successResponse(res, exam, 'Examen mis Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteExam = async (req, res) => {
+  try {
+    await Exam.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'Examen supprimÃ©');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getExamResults = async (req, res) => {
+  try {
+    const grades = await Grade.find({ exam: req.params.id })
+      .populate('student', 'firstName lastName matricule')
+      .sort({ score: -1 });
+    return successResponse(res, grades);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.publishResults = async (req, res) => {
+  try {
+    await Exam.findByIdAndUpdate(req.params.id, { status: 'results_published' });
+    await Grade.updateMany({ exam: req.params.id }, { published: true });
+    return successResponse(res, null, 'RÃ©sultats publiÃ©s');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+,,,, 
+feeController
+const Fee = require('../models/Fee.model');
+const Payment = require('../models/Payment.model');
+const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
+const { getPagination, getCurrentAcademicYear } = require('../utils/helpers');
+const { generateReceiptPDF } = require('../services/pdf.service');
+const { sendPaymentReminder } = require('../services/email.service');
+
+// GET /api/fees
+const getFees = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = getPagination(req.query);
+    let filter = {};
+
+    if (req.user.role === 'student') filter.student = req.user._id;
+    else {
+      if (req.query.student) filter.student = req.query.student;
+      if (req.query.status) filter.status = req.query.status;
+      if (req.query.academicYear) filter.academicYear = req.query.academicYear;
+    }
+
+    const [fees, total] = await Promise.all([
+      Fee.find(filter)
+        .populate('student', 'firstName lastName studentId')
+        .sort({ createdAt: -1 })
+        .skip(skip).limit(limit),
+      Fee.countDocuments(filter)
+    ]);
+
+    return paginated(res, fees, total, page, limit);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/fees  - Créer une fiche de frais
+const createFee = async (req, res, next) => {
+  try {
+    const { student, academicYear, items } = req.body;
+    const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+
+    const existing = await Fee.findOne({ student, academicYear: academicYear || getCurrentAcademicYear() });
+    if (existing) return badRequest(res, 'Une fiche de frais existe déjà pour cet étudiant cette année.');
+
+    const fee = await Fee.create({
+      student,
+      academicYear: academicYear || getCurrentAcademicYear(),
+      items,
+      totalAmount
+    });
+
+    return created(res, fee, 'Fiche de frais créée.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/fees/:id/pay  - Enregistrer un paiement
+const recordPayment = async (req, res, next) => {
+  try {
+    const { amount, method, reference } = req.body;
+    const fee = await Fee.findById(req.params.id).populate('student');
+    if (!fee) return notFound(res, 'Fiche de frais introuvable.');
+
+    if (amount > fee.remainingAmount) {
+      return badRequest(res, `Le montant dépasse le restant dû (${fee.remainingAmount} DA).`);
+    }
+
+    // Numéro de reçu
+    const receiptNumber = `REC-${Date.now()}`;
+
+    const payment = await Payment.create({
+      fee: fee._id,
+      student: fee.student._id,
+      amount,
+      method,
+      reference,
+      receiptNumber,
+      recordedBy: req.user._id
+    });
+
+    // Mettre à jour la fiche
+    fee.paidAmount += amount;
+    fee.lastPaymentDate = new Date();
+    await fee.save();
+
+    // Générer le reçu PDF
+    const pdf = await generateReceiptPDF({
+      student: fee.student,
+      payment,
+      fee,
+      receiptNumber
+    });
+
+    payment.receiptUrl = `/uploads/reports/${receiptNumber}.pdf`;
+    await payment.save();
+
+    return success(res, {
+      payment,
+      fee: { totalAmount: fee.totalAmount, paidAmount: fee.paidAmount, remainingAmount: fee.remainingAmount, status: fee.status }
+    }, 'Paiement enregistré.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/fees/:id/payments  - Historique paiements d'une fiche
+const getPaymentHistory = async (req, res, next) => {
+  try {
+    const payments = await Payment.find({ fee: req.params.id })
+      .populate('recordedBy', 'firstName lastName')
+      .sort({ paymentDate: -1 });
+    return success(res, payments);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/fees/:feeId/receipt/:paymentId/pdf
+const downloadReceipt = async (req, res, next) => {
+  try {
+    const payment = await Payment.findById(req.params.paymentId);
+    const fee = await Fee.findById(req.params.feeId).populate('student');
+    if (!payment || !fee) return notFound(res, 'Paiement introuvable.');
+
+    const pdf = await generateReceiptPDF({ student: fee.student, payment, fee, receiptNumber: payment.receiptNumber });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=recu_${payment.receiptNumber}.pdf`);
+    res.send(pdf);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/fees/reminders  - Envoyer rappels impayés
+const sendReminders = async (req, res, next) => {
+  try {
+    const overdueFees = await Fee.find({ status: { $in: ['pending', 'partial', 'overdue'] } })
+      .populate('student');
+    let sent = 0;
+    for (const fee of overdueFees) {
+      if (fee.student?.email) {
+        await sendPaymentReminder(fee.student, fee);
+        sent++;
+      }
+    }
+    return success(res, { sent }, `${sent} rappels envoyés.`);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/fees/stats  - Statistiques financières
+const getFinancialStats = async (req, res, next) => {
+  try {
+    const { academicYear } = req.query;
+    const filter = academicYear ? { academicYear } : {};
+
+    const stats = await Fee.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$totalAmount' },
+          paidAmount: { $sum: '$paidAmount' },
+          remainingAmount: { $sum: '$remainingAmount' }
+        }
+      }
+    ]);
+
+    const totals = await Fee.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$totalAmount' },
+          totalCollected: { $sum: '$paidAmount' },
+          totalPending: { $sum: '$remainingAmount' }
+        }
+      }
+    ]);
+
+    return success(res, { stats, totals: totals[0] || {} });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getFees, createFee, recordPayment, getPaymentHistory, downloadReceipt, sendReminders, getFinancialStats };
+
+
+GradeController
+const Grade = require('../models/Grade.model');
+const Enrollment = require('../models/Enrollment.model');
+const UE = require('../models/UE.model');
+const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
+const { getPagination } = require('../utils/helpers');
+const { calculateUEAverage, getMention, isUEValidated } = require('../utils/calculator');
+const { sendGradesPublished } = require('../services/email.service');
+const { generateTranscriptPDF } = require('../services/pdf.service');
+const { exportGradesToExcel } = require('../services/excel.service');
+const { sendNotification } = require('../services/notification.service');
+
+// GET /api/grades  (admin: toutes, teacher: ses UEs, student: ses notes)
+const getGrades = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = getPagination(req.query);
+    const { student, ue, academicYear, semester, session } = req.query;
+
+    let filter = {};
+    if (student) filter.student = student;
+    if (ue) filter.ue = ue;
+    if (academicYear) filter.academicYear = academicYear;
+    if (semester) filter.semester = semester;
+    if (session) filter.session = session;
+
+    // Étudiant : uniquement ses propres notes
+    if (req.user.role === 'student') filter.student = req.user._id;
+
+    const [grades, total] = await Promise.all([
+      Grade.find(filter)
+        .populate('student', 'firstName lastName studentId')
+        .populate('ue', 'code title coefficient credits')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Grade.countDocuments(filter)
+    ]);
+
+    return paginated(res, grades, total, page, limit);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/grades  - Saisir/mettre à jour une note
+const upsertGrade = async (req, res, next) => {
+  try {
+    const { student, ue, academicYear, semester, session, assessments } = req.body;
+
+    // Calculer la moyenne automatiquement
+    const average = calculateUEAverage(assessments);
+    const ueData = await UE.findById(ue);
+    if (!ueData) return notFound(res, 'UE introuvable.');
+
+    const gradeData = {
+      student, ue, program: ueData.program, academicYear, semester,
+      session: session || 'session1',
+      assessments,
+      average,
+      mention: getMention(average),
+      isValidated: isUEValidated(average),
+      ectsObtained: isUEValidated(average) ? ueData.credits : 0,
+      finalAverage: average
+    };
+
+    const grade = await Grade.findOneAndUpdate(
+      { student, ue, academicYear, session: session || 'session1' },
+      gradeData,
+      { new: true, upsert: true, runValidators: true }
+    ).populate('student', 'firstName lastName email studentId')
+     .populate('ue', 'code title');
+
+    return success(res, grade, 'Note enregistrée.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/grades/:id/session2 - Note de rattrapage
+const addSession2Grade = async (req, res, next) => {
+  try {
+    const { score } = req.body;
+    const grade = await Grade.findById(req.params.id).populate('ue');
+    if (!grade) return notFound(res, 'Note introuvable.');
+
+    grade.session2Score = score;
+    // La note finale est le max entre session 1 et session 2
+    grade.finalAverage = Math.max(grade.average, score);
+    grade.isValidated = isUEValidated(grade.finalAverage);
+    grade.ectsObtained = grade.isValidated ? grade.ue.credits : 0;
+    grade.mention = getMention(grade.finalAverage);
+    await grade.save();
+
+    return success(res, grade, 'Note de rattrapage enregistrée.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/grades/bulk  - Saisie en masse pour une UE
+const bulkUpsertGrades = async (req, res, next) => {
+  try {
+    const { ue, academicYear, semester, session, grades } = req.body;
+    const ueData = await UE.findById(ue);
+    if (!ueData) return notFound(res, 'UE introuvable.');
+
+    const results = [];
+    for (const g of grades) {
+      const average = calculateUEAverage(g.assessments);
+      const result = await Grade.findOneAndUpdate(
+        { student: g.student, ue, academicYear, session: session || 'session1' },
+        {
+          student: g.student, ue, program: ueData.program,
+          academicYear, semester, session: session || 'session1',
+          assessments: g.assessments,
+          average,
+          mention: getMention(average),
+          isValidated: isUEValidated(average),
+          ectsObtained: isUEValidated(average) ? ueData.credits : 0,
+          finalAverage: average
+        },
+        { new: true, upsert: true }
+      );
+      results.push(result);
+    }
+
+    return success(res, { count: results.length }, `${results.length} notes enregistrées.`);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/grades/publish/:ue - Publier les notes d'une UE (notif étudiants)
+const publishGrades = async (req, res, next) => {
+  try {
+    const { ue, academicYear, semester } = req.body;
+    const ueData = await UE.findById(ue);
+    if (!ueData) return notFound(res, 'UE introuvable.');
+
+    const grades = await Grade.find({ ue, academicYear, semester })
+      .populate('student', 'firstName email');
+
+    // Notifier chaque étudiant
+    for (const grade of grades) {
+      await sendNotification({
+        recipient: grade.student._id,
+        sender: req.user._id,
+        type: 'success',
+        title: 'Notes disponibles',
+        message: `Vos notes pour l'UE ${ueData.title} (${semester}) ont été publiées.`,
+        link: '/etudiant/grades'
+      });
+    }
+
+    return success(res, { notified: grades.length }, 'Notes publiées et étudiants notifiés.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/grades/student/:studentId/transcript  - Relevé de notes
+const getStudentTranscript = async (req, res, next) => {
+  try {
+    const { academicYear, semester } = req.query;
+    const studentId = req.params.studentId;
+
+    const grades = await Grade.find({ student: studentId, academicYear, semester })
+      .populate('ue', 'code title coefficient credits')
+      .populate('student', 'firstName lastName studentId ine')
+      .populate('program', 'name');
+
+    return success(res, grades);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/grades/student/:studentId/transcript/pdf
+const downloadTranscriptPDF = async (req, res, next) => {
+  try {
+    const { academicYear, semester } = req.query;
+    const grades = await Grade.find({ student: req.params.studentId, academicYear, semester })
+      .populate('student', 'firstName lastName studentId ine')
+      .populate('ue', 'code title coefficient credits')
+      .populate('program', 'name');
+
+    if (!grades.length) return notFound(res, 'Aucune note trouvée.');
+
+    const student = grades[0].student;
+    const program = grades[0].program;
+    const ueGrades = grades.map(g => ({
+      ueCode: g.ue?.code, ueTitle: g.ue?.title,
+      coefficient: g.ue?.coefficient, credits: g.ue?.credits,
+      average: g.finalAverage, mention: g.mention,
+      isValidated: g.isValidated, ectsObtained: g.ectsObtained
+    }));
+    const semesterAverage = ueGrades.reduce((s, g) => s + g.average * g.coefficient, 0) /
+      ueGrades.reduce((s, g) => s + g.coefficient, 0);
+
+    const pdf = await generateTranscriptPDF({
+      student, program, ueGrades, semesterAverage,
+      semester, academicYear,
+      totalECTS: ueGrades.reduce((s, g) => s + (g.ectsObtained || 0), 0),
+      schoolName: 'Université'
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=releve_${student.studentId}_${semester}.pdf`);
+    res.send(pdf);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/grades/ue/:ueId/export
+const exportUEGradesExcel = async (req, res, next) => {
+  try {
+    const { academicYear, semester } = req.query;
+    const grades = await Grade.find({ ue: req.params.ueId, academicYear, semester })
+      .populate('student', 'firstName lastName studentId')
+      .populate('ue', 'title');
+
+    const ue = grades[0]?.ue;
+    const buffer = await exportGradesToExcel(grades, ue?.title || 'UE');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=notes_${ue?.title || 'ue'}.xlsx`);
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  getGrades, upsertGrade, addSession2Grade, bulkUpsertGrades,
+  publishGrades, getStudentTranscript, downloadTranscriptPDF, exportUEGradesExcel
+};,,,, 
+
+intershaiptController
+const Internship = require('../models/Internship.model');
+const Company = require('../models/Company.model');
+const { successResponse, errorResponse, paginatedResponse } = require('../utils/apiResponse');
+
+// INTERNSHIPS
+exports.getAllInternships = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, student, company, status, type } = req.query;
+    const filter = {};
+    if (student) filter.student = student;
+    if (company) filter.company = company;
+    if (status) filter.status = status;
+    if (type) filter.type = type;
+
+    const total = await Internship.countDocuments(filter);
+    const internships = await Internship.find(filter)
+      .populate('student', 'firstName lastName matricule')
+      .populate('company', 'name sector')
+      .populate('supervisor', 'firstName lastName')
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .sort({ startDate: -1 });
+
+    return paginatedResponse(res, internships, total, page, limit);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getInternshipById = async (req, res) => {
+  try {
+    const internship = await Internship.findById(req.params.id)
+      .populate('student company supervisor');
+    if (!internship) return errorResponse(res, 'Stage introuvable', 404);
+    return successResponse(res, internship);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.createInternship = async (req, res) => {
+  try {
+    const internship = await Internship.create(req.body);
+    return successResponse(res, internship, 'Stage crÃ©Ã©', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateInternship = async (req, res) => {
+  try {
+    const internship = await Internship.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!internship) return errorResponse(res, 'Stage introuvable', 404);
+    return successResponse(res, internship, 'Stage mis Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteInternship = async (req, res) => {
+  try {
+    await Internship.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'Stage supprimÃ©');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// COMPANIES
+exports.getAllCompanies = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search, sector } = req.query;
+    const filter = {};
+    if (search) filter.name = new RegExp(search, 'i');
+    if (sector) filter.sector = sector;
+
+    const total = await Company.countDocuments(filter);
+    const companies = await Company.find(filter)
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .sort({ name: 1 });
+
+    return paginatedResponse(res, companies, total, page, limit);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.createCompany = async (req, res) => {
+  try {
+    const company = await Company.create(req.body);
+    return successResponse(res, company, 'Entreprise ajoutÃ©e', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateCompany = async (req, res) => {
+  try {
+    const company = await Company.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!company) return errorResponse(res, 'Entreprise introuvable', 404);
+    return successResponse(res, company, 'Entreprise mise Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteCompany = async (req, res) => {
+  try {
+    await Company.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'Entreprise supprimÃ©e');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+,,,, 
+
+librarycontroller
+const LibraryBook = require('../models/LibraryBook.model');
+const LibraryLoan = require('../models/LibraryLoan.model');
+const { successResponse, errorResponse, paginatedResponse } = require('../utils/apiResponse');
+
+// BOOKS
+exports.getAllBooks = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search, category, available } = req.query;
+    const filter = {};
+    if (search) filter.$or = [{ title: new RegExp(search, 'i') }, { author: new RegExp(search, 'i') }, { isbn: new RegExp(search, 'i') }];
+    if (category) filter.category = category;
+    if (available === 'true') filter.availableCopies = { $gt: 0 };
+
+    const total = await LibraryBook.countDocuments(filter);
+    const books = await LibraryBook.find(filter)
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .sort({ title: 1 });
+
+    return paginatedResponse(res, books, total, page, limit);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getBookById = async (req, res) => {
+  try {
+    const book = await LibraryBook.findById(req.params.id);
+    if (!book) return errorResponse(res, 'Livre introuvable', 404);
+    return successResponse(res, book);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.createBook = async (req, res) => {
+  try {
+    const book = await LibraryBook.create(req.body);
+    return successResponse(res, book, 'Livre ajoutÃ©', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateBook = async (req, res) => {
+  try {
+    const book = await LibraryBook.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!book) return errorResponse(res, 'Livre introuvable', 404);
+    return successResponse(res, book, 'Livre mis Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteBook = async (req, res) => {
+  try {
+    await LibraryBook.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'Livre supprimÃ©');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// LOANS
+exports.borrowBook = async (req, res) => {
+  try {
+    const book = await LibraryBook.findById(req.body.book);
+    if (!book || book.availableCopies < 1) return errorResponse(res, 'Livre non disponible', 400);
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 14); // 2 semaines
+
+    const loan = await LibraryLoan.create({
+      book: req.body.book,
+      borrower: req.body.borrower,
+      borrowerType: req.body.borrowerType || 'student',
+      dueDate
+    });
+
+    book.availableCopies -= 1;
+    await book.save();
+
+    return successResponse(res, loan, 'Emprunt enregistrÃ©', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.returnBook = async (req, res) => {
+  try {
+    const loan = await LibraryLoan.findById(req.params.loanId);
+    if (!loan) return errorResponse(res, 'Emprunt introuvable', 404);
+    if (loan.returnDate) return errorResponse(res, 'DÃ©jÃ  retournÃ©', 400);
+
+    loan.returnDate = new Date();
+    loan.status = 'returned';
+    await loan.save();
+
+    await LibraryBook.findByIdAndUpdate(loan.book, { $inc: { availableCopies: 1 } });
+
+    return successResponse(res, loan, 'Retour enregistrÃ©');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getActiveLoans = async (req, res) => {
+  try {
+    const loans = await LibraryLoan.find({ status: 'active' })
+      .populate('book', 'title author isbn')
+      .populate('borrower', 'firstName lastName matricule')
+      .sort({ dueDate: 1 });
+    return successResponse(res, loans);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getOverdueLoans = async (req, res) => {
+  try {
+    const loans = await LibraryLoan.find({ status: 'active', dueDate: { $lt: new Date() } })
+      .populate('book', 'title author')
+      .populate('borrower', 'firstName lastName email');
+    return successResponse(res, loans);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+
+
+
+notificationController
+const Notification = require('../models/Notification.model');
+const { successResponse, errorResponse } = require('../utils/apiResponse');
+
+exports.getUserNotifications = async (req, res) => {
+  try {
+    const notifications = await Notification.find({ recipient: req.user._id })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    return successResponse(res, notifications);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.markAsRead = async (req, res) => {
+  try {
+    await Notification.findByIdAndUpdate(req.params.id, { read: true, readAt: new Date() });
+    return successResponse(res, null, 'Notification lue');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.markAllAsRead = async (req, res) => {
+  try {
+    await Notification.updateMany({ recipient: req.user._id, read: false }, { read: true, readAt: new Date() });
+    return successResponse(res, null, 'Toutes les notifications lues');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteNotification = async (req, res) => {
+  try {
+    await Notification.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'Notification supprimÃ©e');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({ recipient: req.user._id, read: false });
+    return successResponse(res, { count });
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+,,, 
+
+programController
+const Program = require('../models/Program.model');
+const UE = require('../models/UE.model');
+const { successResponse, errorResponse, paginatedResponse } = require('../utils/apiResponse');
+
+// GET /api/programs
+exports.getAllPrograms = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, department, level, status } = req.query;
+    const filter = {};
+    if (department) filter.department = department;
+    if (level) filter.level = level;
+    if (status) filter.status = status;
+
+    const total = await Program.countDocuments(filter);
+    const programs = await Program.find(filter)
+      .populate('coordinator', 'firstName lastName email')
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .sort({ createdAt: -1 });
+
+    return paginatedResponse(res, programs, total, page, limit);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// GET /api/programs/:id
+exports.getProgramById = async (req, res) => {
+  try {
+    const program = await Program.findById(req.params.id)
+      .populate('coordinator', 'firstName lastName email')
+      .populate('ues');
+    if (!program) return errorResponse(res, 'FiliÃ¨re introuvable', 404);
+    return successResponse(res, program);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// POST /api/programs
+exports.createProgram = async (req, res) => {
+  try {
+    const program = await Program.create(req.body);
+    return successResponse(res, program, 'FiliÃ¨re crÃ©Ã©e avec succÃ¨s', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// PUT /api/programs/:id
+exports.updateProgram = async (req, res) => {
+  try {
+    const program = await Program.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!program) return errorResponse(res, 'FiliÃ¨re introuvable', 404);
+    return successResponse(res, program, 'FiliÃ¨re mise Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// DELETE /api/programs/:id
+exports.deleteProgram = async (req, res) => {
+  try {
+    const program = await Program.findByIdAndDelete(req.params.id);
+    if (!program) return errorResponse(res, 'FiliÃ¨re introuvable', 404);
+    return successResponse(res, null, 'FiliÃ¨re supprimÃ©e');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// GET /api/programs/:id/ues
+exports.getProgramUEs = async (req, res) => {
+  try {
+    const ues = await UE.find({ program: req.params.id }).sort({ semester: 1 });
+    return successResponse(res, ues);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+,,, 
+
+resourceController
+const Student = require('../models/Student.model');
+const Grade = require('../models/Grade.model');
+const Attendance = require('../models/Attendance.model');
+const Fee = require('../models/Fee.model');
+const Enrollment = require('../models/Enrollment.model');
+const Transcript = require('../models/Transcript.model');
+const pdfService = require('../services/pdf.service');
+const excelService = require('../services/excel.service');
+const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { calculateAverage, getMention } = require('../utils/calculator');
+
+// RelevÃ© de notes d'un Ã©tudiant
+exports.getStudentTranscript = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { semester, academicYear } = req.query;
+
+    const student = await Student.findById(studentId).populate('user program');
+    if (!student) return errorResponse(res, 'Ã‰tudiant introuvable', 404);
+
+    const filter = { student: studentId };
+    if (semester) filter.semester = semester;
+    if (academicYear) filter.academicYear = academicYear;
+
+    const grades = await Grade.find(filter)
+      .populate('course', 'name code credits')
+      .populate('exam', 'type title');
+
+    const average = calculateAverage(grades);
+    const mention = getMention(average);
+
+    return successResponse(res, { student, grades, average, mention });
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// Export PDF relevÃ© de notes
+exports.exportTranscriptPDF = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const student = await Student.findById(studentId).populate('user program');
+    const grades = await Grade.find({ student: studentId }).populate('course exam');
+
+    const pdfBuffer = await pdfService.generateTranscript(student, grades);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=releve_${student.matricule}.pdf`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// Rapport absences
+exports.getAttendanceReport = async (req, res) => {
+  try {
+    const { program, course, startDate, endDate } = req.query;
+    const filter = {};
+    if (course) filter.course = course;
+    if (startDate && endDate) filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
+
+    const records = await Attendance.find(filter)
+      .populate('student', 'firstName lastName matricule')
+      .populate('course', 'name code');
+
+    const summary = {};
+    records.forEach(r => {
+      const id = r.student._id.toString();
+      if (!summary[id]) summary[id] = { student: r.student, total: 0, absent: 0, late: 0 };
+      summary[id].total += 1;
+      if (r.status === 'absent') summary[id].absent += 1;
+      if (r.status === 'late') summary[id].late += 1;
+    });
+
+    return successResponse(res, Object.values(summary));
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// Rapport financier
+exports.getFinancialReport = async (req, res) => {
+  try {
+    const { academicYear } = req.query;
+    const filter = {};
+    if (academicYear) filter.academicYear = academicYear;
+
+    const fees = await Fee.find(filter).populate('student', 'firstName lastName');
+
+    const totalExpected = fees.reduce((s, f) => s + f.amount, 0);
+    const totalPaid = fees.reduce((s, f) => s + f.paidAmount, 0);
+    const pending = fees.filter(f => f.status === 'pending');
+    const overdue = fees.filter(f => f.status === 'overdue');
+
+    return successResponse(res, {
+      totalExpected,
+      totalPaid,
+      totalPending: totalExpected - totalPaid,
+      pendingCount: pending.length,
+      overdueCount: overdue.length,
+      collectionRate: ((totalPaid / totalExpected) * 100).toFixed(2)
+    });
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// Export Excel liste Ã©tudiants
+exports.exportStudentsExcel = async (req, res) => {
+  try {
+    const students = await Student.find().populate('user program');
+    const buffer = await excelService.generateStudentList(students);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=etudiants.xlsx');
+    res.send(buffer);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// Stats globales pour dashboard
+exports.getGlobalStats = async (req, res) => {
+  try {
+    const [students, enrollments, fees, attendance] = await Promise.all([
+      Student.countDocuments({ status: 'active' }),
+      Enrollment.countDocuments({ status: 'enrolled' }),
+      Fee.aggregate([{ $group: { _id: null, total: { $sum: '$amount' }, paid: { $sum: '$paidAmount' } } }]),
+      Attendance.aggregate([
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ])
+    ]);
+
+    return successResponse(res, {
+      activeStudents: students,
+      activeEnrollments: enrollments,
+      financial: fees[0] || { total: 0, paid: 0 },
+      attendance: attendance.reduce((acc, a) => ({ ...acc, [a._id]: a.count }), {})
+    });
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+,,,, 
+
+ScheduleController
+
+const Schedule = require('../models/Schedule.model');
+const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { settings } = require('cluster');
+
+exports.getAllSchedules = async (req, res) => {
+  try {
+    const { program, teacher, room, week, semester } = req.query;
+    const filter = {};
+    if (program) filter.program = program;
+    if (teacher) filter.teacher = teacher;
+    if (room) filter.room = room;
+    if (week) filter.week = week;
+    if (semester) filter.semester = semester;
+
+    const schedules = await Schedule.find(filter)
+      .populate('course', 'name type')
+      .populate('teacher', 'firstName lastName')
+      .populate('room', 'name building capacity')
+      .populate('program', 'name code')
+      .sort({ dayOfWeek: 1, startTime: 1 });
+
+    return successResponse(res, schedules);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getScheduleById = async (req, res) => {
+  try {
+    const schedule = await Schedule.findById(req.params.id)
+      .populate('course teacher room program');
+    if (!schedule) return errorResponse(res, 'Emploi du temps introuvable', 404);
+    return successResponse(res, schedule);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.createSchedule = async (req, res) => {
+  try {
+    // VÃ©rifier conflit de salle
+    const conflict = await Schedule.findOne({
+      room: req.body.room,
+      dayOfWeek: req.body.dayOfWeek,
+      $or: [
+        { startTime: { $lt: req.body.endTime }, endTime: { $gt: req.body.startTime } }
+      ]
+    });
+    if (conflict) return errorResponse(res, 'Conflit de salle dÃ©tectÃ©', 409);
+
+    const schedule = await Schedule.create(req.body);
+    return successResponse(res, schedule, 'SÃ©ance crÃ©Ã©e', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateSchedule = async (req, res) => {
+  try {
+    const schedule = await Schedule.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!schedule) return errorResponse(res, 'Introuvable', 404);
+    return successResponse(res, schedule, 'SÃ©ance mise Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteSchedule = async (req, res) => {
+  try {
+    await Schedule.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'SÃ©ance supprimÃ©e');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getTeacherSchedule = async (req, res) => {
+  try {
+    const schedules = await Schedule.find({ teacher: req.params.teacherId })
+      .populate('course', 'name')
+      .populate('room', 'name')
+      .sort({ dayOfWeek: 1, startTime: 1 });
+    return successResponse(res, schedules);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+,,,,,, 
+
+settingsController
+const Settings = require('../models/Settings.model');
+const { successResponse, errorResponse } = require('../utils/apiResponse');
+
+exports.getSettings = async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = await Settings.create({});
+    }
+    return successResponse(res, settings);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateSettings = async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = await Settings.create(req.body);
+    } else {
+      Object.assign(settings, req.body);
+      await settings.save();
+    }
+    return successResponse(res, settings, 'ParamÃ¨tres mis Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateAcademicYear = async (req, res) => {
+  try {
+    const settings = await Settings.findOneAndUpdate(
+      {},
+      { currentAcademicYear: req.body.academicYear },
+      { new: true, upsert: true }
+    );
+    return successResponse(res, settings, 'AnnÃ©e acadÃ©mique mise Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+,,,,  
+
+StudentController
+
+const Student = require('../models/Student.model');
+const User = require('../models/User.model');
+const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
+const { getPagination, buildSearchFilter, generateStudentId, getCurrentAcademicYear } = require('../utils/helpers');
+const { exportStudentsToExcel, importStudentsFromExcel } = require('../services/Excel.service');
+const { sendNotification } = require('../services/notification.service');
+
+// GET /api/students
+const getAllStudents = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = getPagination(req.query);
+    const { search, program, level, status, academicYear } = req.query;
+
+    let filter = {};
+    if (search) Object.assign(filter, buildSearchFilter(search, ['firstName', 'lastName', 'email', 'studentId']));
+    if (program) filter.program = program;
+    if (level) filter.level = level;
+    if (status) filter.status = status;
+    if (academicYear) filter.academicYear = academicYear;
+
+    const [students, total] = await Promise.all([
+      Student.find(filter)
+        .populate('program', 'name code')
+        .sort({ lastName: 1 })
+        .skip(skip)
+        .limit(limit)
+        .select('-password'),
+      Student.countDocuments(filter)
+    ]);
+
+    return paginated(res, students, total, page, limit);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/students/:id
+const getStudentById = async (req, res, next) => {
+  try {
+    const student = await Student.findById(req.params.id)
+      .populate('program', 'name code type department');
+    if (!student) return notFound(res, 'Étudiant introuvable.');
+    return success(res, student);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/students
+const createStudent = async (req, res, next) => {
+  try {
+    const { firstName, lastName, email, password, program, level, currentSemester, academicYear, ...rest } = req.body;
+
+    // Générer N° étudiant
+    const count = await Student.countDocuments({ academicYear: academicYear || getCurrentAcademicYear() });
+    const studentId = generateStudentId(new Date().getFullYear(), count + 1);
+
+    const student = await Student.create({
+      firstName, lastName, email,
+      password: password || 'Etudiant@123',
+      role: 'student',
+      program, level, currentSemester,
+      academicYear: academicYear || getCurrentAcademicYear(),
+      studentId,
+      ...rest
+    });
+
+    return created(res, student, 'Étudiant créé avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/students/:id
+const updateStudent = async (req, res, next) => {
+  try {
+    const forbidden = ['password', 'role', 'email', 'studentId'];
+    forbidden.forEach(f => delete req.body[f]);
+
+    const student = await Student.findByIdAndUpdate(req.params.id, req.body, {
+      new: true, runValidators: true
+    }).populate('program', 'name code');
+
+    if (!student) return notFound(res, 'Étudiant introuvable.');
+    return success(res, student, 'Étudiant mis à jour.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/students/:id (désactivation)
+const deleteStudent = async (req, res, next) => {
+  try {
+    const student = await Student.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false, status: 'expelled' },
+      { new: true }
+    );
+    if (!student) return notFound(res, 'Étudiant introuvable.');
+    return success(res, null, 'Étudiant désactivé.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/students/export/excel
+const exportStudents = async (req, res, next) => {
+  try {
+    const students = await Student.find({ isActive: true })
+      .populate('program', 'name').lean();
+    const buffer = await exportStudentsToExcel(students);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=etudiants.xlsx');
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/students/import/excel
+const importStudents = async (req, res, next) => {
+  try {
+    if (!req.file) return badRequest(res, 'Fichier Excel requis.');
+    const rows = await importStudentsFromExcel(req.file.buffer);
+    const results = { created: 0, errors: [] };
+
+    for (const row of rows) {
+      try {
+        const exists = await User.findOne({ email: row.email });
+        if (!exists) {
+          const count = await Student.countDocuments();
+          await Student.create({
+            ...row,
+            role: 'student',
+            studentId: generateStudentId(new Date().getFullYear(), count + 1),
+            password: 'Etudiant@123',
+            academicYear: getCurrentAcademicYear()
+          });
+          results.created++;
+        } else {
+          results.errors.push(`Email déjà utilisé : ${row.email}`);
+        }
+      } catch (e) {
+        results.errors.push(`Erreur ligne ${row.email}: ${e.message}`);
+      }
+    }
+
+    return success(res, results, `Import terminé : ${results.created} étudiants créés.`);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/students/me/profile (étudiant connecté)
+const getMyProfile = async (req, res, next) => {
+  try {
+    const student = await Student.findById(req.user._id)
+      .populate('program', 'name code type department');
+    if (!student) return notFound(res, 'Profil introuvable.');
+    return success(res, student);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAllStudents, getStudentById, createStudent, updateStudent, deleteStudent, exportStudents, importStudents, getMyProfile };
+
+
+
+teacherController
+
+const Teacher = require('../models/Teacher.model');
+const User = require('../models/User.model');
+const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
+const { getPagination, buildSearchFilter, generateTeacherId } = require('../utils/helpers');
+
+// GET /api/teachers
+const getAllTeachers = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = getPagination(req.query);
+    const { search, department } = req.query;
+
+    let filter = {};
+    if (search) Object.assign(filter, buildSearchFilter(search, ['firstName', 'lastName', 'email', 'employeeId']));
+    if (department) filter.department = department;
+
+    const [teachers, total] = await Promise.all([
+      Teacher.find(filter)
+        .populate('courses', 'title code type')
+        .sort({ lastName: 1 })
+        .skip(skip)
+        .limit(limit)
+        .select('-password'),
+      Teacher.countDocuments(filter)
+    ]);
+
+    return paginated(res, teachers, total, page, limit);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/teachers/:id
+const getTeacherById = async (req, res, next) => {
+  try {
+    const teacher = await Teacher.findById(req.params.id)
+      .populate('courses', 'title code type')
+      .populate('responsibleUEs', 'code title credits');
+    if (!teacher) return notFound(res, 'Enseignant introuvable.');
+    return success(res, teacher);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/teachers
+const createTeacher = async (req, res, next) => {
+  try {
+    const count = await Teacher.countDocuments();
+    const employeeId = generateTeacherId(new Date().getFullYear(), count + 1);
+
+    const teacher = await Teacher.create({
+      ...req.body,
+      role: 'teacher',
+      employeeId,
+      password: req.body.password || 'Enseignant@123'
+    });
+
+    return created(res, teacher, 'Enseignant créé avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/teachers/:id
+const updateTeacher = async (req, res, next) => {
+  try {
+    ['password', 'role', 'employeeId'].forEach(f => delete req.body[f]);
+
+    const teacher = await Teacher.findByIdAndUpdate(req.params.id, req.body, {
+      new: true, runValidators: true
+    });
+    if (!teacher) return notFound(res, 'Enseignant introuvable.');
+    return success(res, teacher, 'Enseignant mis à jour.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/teachers/:id
+const deleteTeacher = async (req, res, next) => {
+  try {
+    const teacher = await Teacher.findByIdAndUpdate(
+      req.params.id, { isActive: false }, { new: true }
+    );
+    if (!teacher) return notFound(res, 'Enseignant introuvable.');
+    return success(res, null, 'Enseignant désactivé.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/teachers/me/courses (enseignant connecté)
+const getMyCourses = async (req, res, next) => {
+  try {
+    const teacher = await Teacher.findById(req.user._id)
+      .populate({ path: 'courses', populate: { path: 'ue', select: 'code title credits' } });
+    if (!teacher) return notFound(res, 'Profil introuvable.');
+    return success(res, teacher.courses);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAllTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher, getMyCourses };
+
+
+
+UEController
+
+const UE = require('../models/UE.model');
+const Course = require('../models/Course.model');
+const { successResponse, errorResponse, paginatedResponse } = require('../utils/apiResponse');
+
+exports.getAllUEs = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, program, semester } = req.query;
+    const filter = {};
+    if (program) filter.program = program;
+    if (semester) filter.semester = semester;
+
+    const total = await UE.countDocuments(filter);
+    const ues = await UE.find(filter)
+      .populate('program', 'name code')
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+
+    return paginatedResponse(res, ues, total, page, limit);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getUEById = async (req, res) => {
+  try {
+    const ue = await UE.findById(req.params.id).populate('program', 'name code');
+    if (!ue) return errorResponse(res, 'UE introuvable', 404);
+    return successResponse(res, ue);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.createUE = async (req, res) => {
+  try {
+    const ue = await UE.create(req.body);
+    return successResponse(res, ue, 'UE crÃ©Ã©e', 201);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.updateUE = async (req, res) => {
+  try {
+    const ue = await UE.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!ue) return errorResponse(res, 'UE introuvable', 404);
+    return successResponse(res, ue, 'UE mise Ã  jour');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.deleteUE = async (req, res) => {
+  try {
+    await UE.findByIdAndDelete(req.params.id);
+    return successResponse(res, null, 'UE supprimÃ©e');
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+exports.getUECourses = async (req, res) => {
+  try {
+    const courses = await Course.find({ ue: req.params.id })
+      .populate('teacher', 'firstName lastName');
+    return successResponse(res, courses);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+config
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+module.exports = cloudinary;
+
+// Rôles utilisateurs
+const ROLES = {
+  SUPER_ADMIN: 'super_admin',
+  ADMIN: 'admin',
+  TEACHER: 'teacher',
+  STUDENT: 'student',
+  STAFF: 'staff',
+  DEPARTMENT_HEAD: 'department_head'
+};
+
+// Statuts étudiant
+const STUDENT_STATUS = {
+  ACTIVE: 'active',
+  SUSPENDED: 'suspended',
+  GRADUATED: 'graduated',
+  EXPELLED: 'expelled',
+  LEAVE: 'on_leave'
+};
+
+// Types de cours
+const COURSE_TYPES = {
+  CM: 'CM',
+  TD: 'TD',
+  TP: 'TP'
+};
+
+// Statuts de présence
+const ATTENDANCE_STATUS = {
+  PRESENT: 'present',
+  ABSENT: 'absent',
+  JUSTIFIED: 'justified',
+  LATE: 'late',
+  EXEMPTED: 'exempted'
+};
+
+// Types d'évaluation
+const ASSESSMENT_TYPES = {
+  CC: 'controle_continu',
+  PARTIEL: 'examen_partiel',
+  FINAL: 'examen_final',
+  PROJET: 'projet',
+  STAGE: 'stage'
+};
+
+// Sessions d'examen
+const EXAM_SESSIONS = {
+  SESSION1: 'session1',
+  SESSION2: 'session2'
+};
+
+// Mentions
+const MENTIONS = {
+  EXCELLENT: { label: 'Excellent', min: 18, max: 20 },
+  TRES_BIEN: { label: 'Très Bien', min: 16, max: 17.99 },
+  BIEN: { label: 'Bien', min: 14, max: 15.99 },
+  ASSEZ_BIEN: { label: 'Assez Bien', min: 12, max: 13.99 },
+  PASSABLE: { label: 'Passable', min: 10, max: 11.99 },
+  AJOURNE: { label: 'Ajourné', min: 0, max: 9.99 }
+};
+
+// Statuts de paiement
+const PAYMENT_STATUS = {
+  PENDING: 'pending',
+  PARTIAL: 'partial',
+  PAID: 'paid',
+  OVERDUE: 'overdue',
+  EXEMPTED: 'exempted'
+};
+
+// Types de notifications
+const NOTIFICATION_TYPES = {
+  INFO: 'info',
+  WARNING: 'warning',
+  SUCCESS: 'success',
+  ALERT: 'alert',
+  MESSAGE: 'message'
+};
+
+// Niveaux
+const LEVELS = ['L1', 'L2', 'L3', 'M1', 'M2', 'D1', 'D2', 'D3', 'BTS1', 'BTS2', 'BUT1', 'BUT2', 'BUT3'];
+
+// Semestres
+const SEMESTERS = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10'];
+
+// Note de validation
+const PASSING_GRADE = 10;
+const MAX_GRADE = 20;
+
+// Tentatives de connexion max
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCK_TIME = 2 * 60 * 60 * 1000; // 2 heures
+
+module.exports = {
+  ROLES, STUDENT_STATUS, COURSE_TYPES, ATTENDANCE_STATUS,
+  ASSESSMENT_TYPES, EXAM_SESSIONS, MENTIONS, PAYMENT_STATUS,
+  NOTIFICATION_TYPES, LEVELS, SEMESTERS, PASSING_GRADE,
+  MAX_GRADE, MAX_LOGIN_ATTEMPTS, LOCK_TIME
+};
+
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: process.env.EMAIL_PORT,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// Vérification de la connexion
+transporter.verify((error) => {
+  if (error) console.error('❌ Email config error:', error);
+  else console.log('✅ Serveur email prêt');
+});
+
+module.exports = transporter;
+
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+
+let io;
+
+const initSocket = (server) => {
+  io = new Server(server, {
+    cors: {
+      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST'],
+      credentials: true
+    }
+  });
+
+  // Middleware d'authentification Socket
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error('Token manquant'));
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.user = decoded;
+      next();
+    } catch {
+      next(new Error('Token invalide'));
+    }
+  });
+
+  io.on('connection', (socket) => {
+    console.log(`🔌 Utilisateur connecté : ${socket.user.id}`);
+
+    // Rejoindre une room personnelle
+    socket.join(`user_${socket.user.id}`);
+    // Rejoindre la room de son rôle
+    socket.join(`role_${socket.user.role}`);
+
+    socket.on('disconnect', () => {
+      console.log(`🔌 Utilisateur déconnecté : ${socket.user.id}`);
+    });
+  });
+
+  return io;
+};
+
+const getIO = () => {
+  if (!io) throw new Error('Socket.io non initialisé');
+  return io;
+};
+
+module.exports = { initSocket, getIO };
+
+
+
+services
+const nodemailer = require('nodemailer');
+
+// Fonction pour envoyer un email (avec fallback si erreur)
+const sendEmail = async ({ to, subject, html }) => {
+  // ⚠️ MODE DÉVELOPPEMENT : Désactiver les emails
+  if (process.env.NODE_ENV === 'development' || !process.env.SMTP_USER) {
+    console.log('📧 [DEV MODE] Email non envoyé (mode développement)');
+    console.log(`   Destinataire: ${to}`);
+    console.log(`   Sujet: ${subject}`);
+    return { success: true, devMode: true };
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+
+    await transporter.sendMail({
+      from: `"${process.env.UNIVERSITY_NAME}" <${process.env.SMTP_USER}>`,
+      to,
+      subject,
+      html
+    });
+    
+    console.log(`✅ Email envoyé à ${to}`);
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Erreur envoi email:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Email de vérification
+const sendVerificationEmail = async (user, token) => {
+  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${token}`;
+  
+  return await sendEmail({
+    to: user.email,
+    subject: 'Vérification de votre compte',
+    html: `
+      <h1>Bienvenue ${user.firstName} !</h1>
+      <p>Merci de vous être inscrit. Veuillez vérifier votre email en cliquant sur le lien ci-dessous :</p>
+      <a href="${verificationUrl}" style="background:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:8px;">Vérifier mon compte</a>
+      <p>Ou copiez ce lien : ${verificationUrl}</p>
+    `
+  });
+};
+
+// Email de réinitialisation mot de passe
+const sendPasswordResetEmail = async (user, token) => {
+  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${token}`;
+  
+  return await sendEmail({
+    to: user.email,
+    subject: 'Réinitialisation de votre mot de passe',
+    html: `
+      <h1>Bonjour ${user.firstName},</h1>
+      <p>Vous avez demandé la réinitialisation de votre mot de passe. Cliquez sur le lien ci-dessous :</p>
+      <a href="${resetUrl}" style="background:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:8px;">Réinitialiser mon mot de passe</a>
+      <p>Ce lien expire dans 1 heure.</p>
+      <p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+    `
+  });
+};
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+
+
+const ExcelJS = require('exceljs');
+
+/**
+ * Exporte la liste des étudiants en Excel
+ */
+const exportStudentsToExcel = async (students) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Étudiants');
+
+  // Colonnes
+  sheet.columns = [
+    { header: 'N° Étudiant', key: 'studentId', width: 15 },
+    { header: 'Nom', key: 'lastName', width: 20 },
+    { header: 'Prénom', key: 'firstName', width: 20 },
+    { header: 'Email', key: 'email', width: 30 },
+    { header: 'Filière', key: 'program', width: 20 },
+    { header: 'Niveau', key: 'level', width: 10 },
+    { header: 'Semestre', key: 'semester', width: 12 },
+    { header: 'Statut', key: 'status', width: 15 },
+    { header: 'Date inscription', key: 'enrollmentDate', width: 18 }
+  ];
+
+  // Style en-tête
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A56DB' } };
+  sheet.getRow(1).alignment = { horizontal: 'center' };
+
+  // Données
+  students.forEach(s => {
+    sheet.addRow({
+      studentId: s.studentId,
+      lastName: s.lastName,
+      firstName: s.firstName,
+      email: s.email,
+      program: s.program?.name || '',
+      level: s.level,
+      semester: s.currentSemester,
+      status: s.status,
+      enrollmentDate: s.enrollmentDate ? new Date(s.enrollmentDate).toLocaleDateString('fr-FR') : ''
+    });
+  });
+
+  // Bordures
+  sheet.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin' }, left: { style: 'thin' },
+        bottom: { style: 'thin' }, right: { style: 'thin' }
+      };
+    });
+  });
+
+  return workbook.xlsx.writeBuffer();
+};
+
+/**
+ * Exporte les notes d'une UE en Excel
+ */
+const exportGradesToExcel = async (grades, ueName) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(`Notes - ${ueName}`);
+
+  sheet.columns = [
+    { header: 'N° Étudiant', key: 'studentId', width: 15 },
+    { header: 'Nom', key: 'lastName', width: 20 },
+    { header: 'Prénom', key: 'firstName', width: 20 },
+    { header: 'CC (40%)', key: 'cc', width: 12 },
+    { header: 'Partiel (20%)', key: 'partiel', width: 14 },
+    { header: 'Final (40%)', key: 'final', width: 12 },
+    { header: 'Moyenne', key: 'average', width: 12 },
+    { header: 'Mention', key: 'mention', width: 15 },
+    { header: 'Validé', key: 'validated', width: 10 }
+  ];
+
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A56DB' } };
+
+  grades.forEach(g => {
+    const row = sheet.addRow({
+      studentId: g.student?.studentId || '',
+      lastName: g.student?.lastName || '',
+      firstName: g.student?.firstName || '',
+      cc: g.assessments?.find(a => a.type === 'controle_continu')?.score || '-',
+      partiel: g.assessments?.find(a => a.type === 'examen_partiel')?.score || '-',
+      final: g.assessments?.find(a => a.type === 'examen_final')?.score || '-',
+      average: g.average,
+      mention: g.mention || '',
+      validated: g.isValidated ? 'Oui' : 'Non'
+    });
+
+    // Colorer en rouge les notes < 10
+    if (g.average < 10) {
+      row.getCell('average').font = { color: { argb: 'FFCC0000' }, bold: true };
+    }
+  });
+
+  return workbook.xlsx.writeBuffer();
+};
+
+/**
+ * Import d'étudiants depuis Excel (retourne les données parsées)
+ */
+const importStudentsFromExcel = async (buffer) => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.getWorksheet(1);
+  const students = [];
+
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return; // skip en-tête
+    const [, lastName, firstName, email, phone, dateOfBirth, level] = row.values;
+    if (email) {
+      students.push({ lastName, firstName, email, phone, dateOfBirth, level });
+    }
+  });
+
+  return students;
+};
+
+module.exports = { exportStudentsToExcel, exportGradesToExcel, importStudentsFromExcel };
+
+
+const Notification = require('../models/Notification.model');
+const { getIO } = require('../config/socket');
+
+/**
+ * Crée et envoie une notification à un utilisateur
+ */
+const sendNotification = async ({ recipient, sender, type, title, message, link }) => {
+  const notification = await Notification.create({
+    recipient, sender, type, title, message, link
+  });
+
+  // Envoi temps réel via Socket.io
+  try {
+    const io = getIO();
+    io.to(`user_${recipient}`).emit('notification', {
+      _id: notification._id,
+      type,
+      title,
+      message,
+      link,
+      createdAt: notification.createdAt
+    });
+  } catch (e) {
+    // Socket pas encore initialisé, pas bloquant
+  }
+
+  return notification;
+};
+
+/**
+ * Envoie une notification à tous les utilisateurs d'un rôle
+ */
+const broadcastToRole = async ({ role, sender, type, title, message, link }) => {
+  const notification = await Notification.create({
+    recipientRole: role,
+    sender,
+    type,
+    title,
+    message,
+    link,
+    isBroadcast: true
+  });
+
+  try {
+    const io = getIO();
+    io.to(`role_${role}`).emit('notification', {
+      _id: notification._id,
+      type, title, message, link,
+      createdAt: notification.createdAt
+    });
+  } catch (e) {}
+
+  return notification;
+};
+
+/**
+ * Envoie une notification à tous les étudiants d'une filière
+ */
+const broadcastToProgram = async ({ programId, sender, type, title, message }) => {
+  const notification = await Notification.create({
+    recipientProgram: programId,
+    sender, type, title, message,
+    isBroadcast: true
+  });
+  return notification;
+};
+
+/**
+ * Marque une notification comme lue
+ */
+const markAsRead = async (notificationId, userId) => {
+  return Notification.findOneAndUpdate(
+    { _id: notificationId, recipient: userId },
+    { isRead: true, readAt: new Date() },
+    { new: true }
+  );
+};
+
+/**
+ * Marque toutes les notifications d'un utilisateur comme lues
+ */
+const markAllAsRead = async (userId) => {
+  return Notification.updateMany(
+    { recipient: userId, isRead: false },
+    { isRead: true, readAt: new Date() }
+  );
+};
+
+/**
+ * Compte les notifications non lues
+ */
+const getUnreadCount = async (userId) => {
+  return Notification.countDocuments({ recipient: userId, isRead: false });
+};
+
+module.exports = {
+  sendNotification,
+  broadcastToRole,
+  broadcastToProgram,
+  markAsRead,
+  markAllAsRead,
+  getUnreadCount
+};
+
+
+const PDFDocument = require('pdfkit');
+const { getMention } = require('../utils/calculator');
+const { formatDate } = require('../utils/helpers');
+
+/**
+ * Génère un relevé de notes PDF
+ */
+const generateTranscriptPDF = (transcriptData) => {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const buffers = [];
+
+    doc.on('data', buf => buffers.push(buf));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    const { student, program, ueGrades, semesterAverage, semester, academicYear, rank, totalStudents } = transcriptData;
+
+    // En-tête
+    doc.fontSize(16).font('Helvetica-Bold').text("RELEVÉ DE NOTES OFFICIEL", { align: 'center' });
+    doc.fontSize(12).font('Helvetica').text(transcriptData.schoolName || 'Université', { align: 'center' });
+    doc.moveDown();
+
+    // Ligne de séparation
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Infos étudiant
+    doc.fontSize(11).font('Helvetica-Bold').text('Informations étudiant');
+    doc.font('Helvetica');
+    doc.text(`Nom : ${student.lastName.toUpperCase()}   Prénom : ${student.firstName}`);
+    doc.text(`N° Étudiant : ${student.studentId || '-'}   INE : ${student.ine || '-'}`);
+    doc.text(`Filière : ${program.name}   Semestre : ${semester}   Année : ${academicYear}`);
+    doc.moveDown();
+
+    // Tableau des notes
+    doc.font('Helvetica-Bold').fontSize(11).text('Détail des notes');
+    doc.moveDown(0.5);
+
+    // En-têtes colonnes
+    const colX = { ue: 50, title: 90, coeff: 330, credits: 380, avg: 430, mention: 470 };
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Code', colX.ue, doc.y);
+    doc.text('Intitulé UE', colX.title, doc.y - 12);
+    doc.text('Coef', colX.coeff, doc.y - 12);
+    doc.text('ECTS', colX.credits, doc.y - 12);
+    doc.text('Note/20', colX.avg, doc.y - 12);
+    doc.text('Mention', colX.mention, doc.y - 12);
+    doc.moveDown(0.3);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+    doc.moveDown(0.3);
+
+    // Lignes notes
+    doc.font('Helvetica').fontSize(9);
+    ueGrades.forEach((ue) => {
+      const y = doc.y;
+      const validated = ue.average >= 10;
+      if (!validated) doc.fillColor('red');
+      doc.text(ue.ueCode || '-', colX.ue, y, { width: 35 });
+      doc.text(ue.ueTitle, colX.title, y, { width: 235 });
+      doc.text(String(ue.coefficient), colX.coeff, y);
+      doc.text(String(ue.credits), colX.credits, y);
+      doc.text(ue.average.toFixed(2), colX.avg, y);
+      doc.text(ue.mention || getMention(ue.average), colX.mention, y);
+      doc.fillColor('black');
+      doc.moveDown(0.7);
+    });
+
+    doc.moveDown();
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Résumé
+    doc.font('Helvetica-Bold').fontSize(11);
+    doc.text(`Moyenne semestrielle : ${semesterAverage.toFixed(2)}/20   Mention : ${getMention(semesterAverage)}`);
+    if (rank) doc.text(`Rang : ${rank} / ${totalStudents}`);
+    doc.text(`ECTS obtenus : ${transcriptData.totalECTS || 0}`);
+
+    doc.moveDown(2);
+
+    // Signatures
+    doc.fontSize(10).font('Helvetica');
+    doc.text('Le Doyen / Directeur', 50, doc.y, { width: 200 });
+    doc.text('Cachet et Signature', 350, doc.y - 12, { width: 200 });
+
+    doc.moveDown(2);
+    doc.fontSize(8).fillColor('gray')
+      .text(`Document généré le ${formatDate(new Date())} - Vérifiable via QR Code`, { align: 'center' });
+
+    doc.end();
+  });
+};
+
+/**
+ * Génère un reçu de paiement PDF
+ */
+const generateReceiptPDF = (paymentData) => {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const buffers = [];
+
+    doc.on('data', buf => buffers.push(buf));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    const { student, payment, fee, receiptNumber } = paymentData;
+
+    doc.fontSize(18).font('Helvetica-Bold').text('REÇU DE PAIEMENT', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(11).font('Helvetica').text(`N° ${receiptNumber}`, { align: 'center' });
+    doc.moveDown();
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+    doc.moveDown();
+
+    doc.font('Helvetica-Bold').text('Étudiant :');
+    doc.font('Helvetica').text(`${student.firstName} ${student.lastName} - N° ${student.studentId}`);
+    doc.moveDown();
+
+    doc.font('Helvetica-Bold').text('Détails du paiement :');
+    doc.font('Helvetica');
+    doc.text(`Montant payé : ${payment.amount} DA`);
+    doc.text(`Mode de paiement : ${payment.method}`);
+    doc.text(`Date : ${formatDate(payment.paymentDate)}`);
+    doc.text(`Année universitaire : ${fee.academicYear}`);
+    doc.moveDown();
+
+    doc.font('Helvetica-Bold').text(`Montant total : ${fee.totalAmount} DA`);
+    doc.text(`Montant restant : ${fee.remainingAmount} DA`);
+    doc.moveDown(2);
+    doc.font('Helvetica').fontSize(9).fillColor('gray')
+      .text('Ce reçu est valable comme preuve de paiement.', { align: 'center' });
+
+    doc.end();
+  });
+};
+
+module.exports = { generateTranscriptPDF, generateReceiptPDF };
+
+
+const QRCode = require('qrcode');
+
+/**
+ * Génère un QR Code en base64 (pour les relevés, diplômes)
+ */
+const generateQRCode = async (data) => {
+  return await QRCode.toDataURL(JSON.stringify(data), {
+    width: 200,
+    margin: 1,
+    color: { dark: '#000000', light: '#ffffff' }
+  });
+};
+
+/**
+ * Génère un QR Code pour vérification de document
+ */
+const generateDocumentQR = async (documentType, documentId, studentId) => {
+  const verificationUrl = `${process.env.CLIENT_URL}/verify/${documentType}/${documentId}`;
+  return await QRCode.toDataURL(verificationUrl, { width: 150 });
+};
+
+/**
+ * Génère un QR Code pour la prise de présence rapide en amphi
+ */
+const generateAttendanceQR = async (courseId, date, teacherId) => {
+  const payload = {
+    courseId,
+    date: date.toISOString(),
+    teacherId,
+    expires: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 min
+  };
+  return await QRCode.toDataURL(JSON.stringify(payload), { width: 300 });
+};
+
+module.exports = { generateQRCode, generateDocumentQR, generateAttendanceQR };
+
+
+Validatorrs
+const Joi = require('joi');
+
+// Grade
+exports.createGradeSchema = Joi.object({
+  student: Joi.string().hex().length(24).required(),
+  course: Joi.string().hex().length(24).required(),
+  exam: Joi.string().hex().length(24).optional(),
+  score: Joi.number().min(0).max(20).required(),
+  type: Joi.string().valid('exam', 'assignment', 'quiz', 'practical').required(),
+  semester: Joi.number().valid(1, 2).required(),
+  academicYear: Joi.string().required(),
+  comment: Joi.string().max(500).optional(),
+});
+
+exports.bulkGradeSchema = Joi.object({
+  grades: Joi.array().items(
+    Joi.object({
+      student: Joi.string().hex().length(24).required(),
+      score: Joi.number().min(0).max(20).required(),
+      comment: Joi.string().optional(),
+    })
+  ).min(1).required(),
+  course: Joi.string().hex().length(24).required(),
+  exam: Joi.string().hex().length(24).optional(),
+  type: Joi.string().valid('exam', 'assignment', 'quiz', 'practical').required(),
+  semester: Joi.number().valid(1, 2).required(),
+  academicYear: Joi.string().required(),
+});
+
+// Attendance
+exports.attendanceSchema = Joi.object({
+  student: Joi.string().hex().length(24).required(),
+  course: Joi.string().hex().length(24).required(),
+  date: Joi.date().required(),
+  status: Joi.string().valid('present', 'absent', 'late', 'excused').required(),
+  justification: Joi.string().max(500).optional(),
+});
+
+exports.bulkAttendanceSchema = Joi.object({
+  records: Joi.array().items(
+    Joi.object({
+      student: Joi.string().hex().length(24).required(),
+      status: Joi.string().valid('present', 'absent', 'late', 'excused').required(),
+      justification: Joi.string().optional(),
+    })
+  ).min(1).required(),
+  course: Joi.string().hex().length(24).required(),
+  date: Joi.date().required(),
+});
+
+// Fee
+exports.createFeeSchema = Joi.object({
+  student: Joi.string().hex().length(24).required(),
+  type: Joi.string().valid('tuition', 'registration', 'library', 'lab', 'exam', 'other').required(),
+  amount: Joi.number().positive().required(),
+  dueDate: Joi.date().required(),
+  academicYear: Joi.string().required(),
+  semester: Joi.number().valid(1, 2).optional(),
+  description: Joi.string().optional(),
+});
+
+exports.paymentSchema = Joi.object({
+  amount: Joi.number().positive().required(),
+  method: Joi.string().valid('cash', 'bank_transfer', 'cheque', 'online').required(),
+  reference: Joi.string().optional(),
+  notes: Joi.string().optional(),
+});
+
+// Exam
+exports.createExamSchema = Joi.object({
+  title: Joi.string().required(),
+  course: Joi.string().hex().length(24).required(),
+  program: Joi.string().hex().length(24).required(),
+  type: Joi.string().valid('midterm', 'final', 'quiz', 'practical', 'makeup').required(),
+  date: Joi.date().required(),
+  startTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  endTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  room: Joi.string().hex().length(24).optional(),
+  totalMarks: Joi.number().positive().default(20),
+  semester: Joi.number().valid(1, 2).required(),
+  academicYear: Joi.string().required(),
+});
+
+
+const Joi = require('joi');
+
+exports.loginSchema = Joi.object({
+  email: Joi.string().email().required().messages({
+    'string.email': 'Email invalide',
+    'any.required': 'Email requis',
+  }),
+  password: Joi.string().min(6).required().messages({
+    'string.min': 'Mot de passe trop court (min 6 caractères)',
+    'any.required': 'Mot de passe requis',
+  }),
+});
+
+exports.registerSchema = Joi.object({
+  firstName: Joi.string().min(2).max(50).required(),
+  lastName: Joi.string().min(2).max(50).required(),
+  email: Joi.string().email().required(),
+  password: Joi.string().min(6).required(),
+  role: Joi.string().valid('admin', 'staff', 'teacher', 'student').required(),
+  phone: Joi.string().optional(),
+});
+
+exports.forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required(),
+});
+
+exports.resetPasswordSchema = Joi.object({
+  password: Joi.string().min(6).required(),
+  confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({
+    'any.only': 'Les mots de passe ne correspondent pas',
+  }),
+});
+
+exports.changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().required(),
+  newPassword: Joi.string().min(6).required(),
+  confirmPassword: Joi.string().valid(Joi.ref('newPassword')).required(),
+});
+
+
+const Joi = require('joi');
+
+// Program
+exports.createProgramSchema = Joi.object({
+  name: Joi.string().min(3).required(),
+  code: Joi.string().uppercase().min(2).max(10).required(),
+  department: Joi.string().required(),
+  level: Joi.string().valid('licence', 'master', 'doctorat', 'bts', 'dut').required(),
+  duration: Joi.number().valid(1, 2, 3, 4, 5).required(),
+  coordinator: Joi.string().hex().length(24).optional(),
+  description: Joi.string().max(1000).optional(),
+  maxStudents: Joi.number().positive().optional(),
+});
+
+// UE
+exports.createUESchema = Joi.object({
+  name: Joi.string().min(3).required(),
+  code: Joi.string().uppercase().required(),
+  program: Joi.string().hex().length(24).required(),
+  semester: Joi.number().min(1).max(10).required(),
+  credits: Joi.number().min(1).max(30).required(),
+  coefficient: Joi.number().positive().default(1),
+  type: Joi.string().valid('fundamental', 'complementary', 'optional').required(),
+});
+
+// Course
+exports.createCourseSchema = Joi.object({
+  name: Joi.string().min(3).required(),
+  code: Joi.string().uppercase().required(),
+  ue: Joi.string().hex().length(24).required(),
+  teacher: Joi.string().hex().length(24).optional(),
+  type: Joi.string().valid('course', 'td', 'tp', 'project').required(),
+  hoursPerWeek: Joi.number().positive().required(),
+  totalHours: Joi.number().positive().optional(),
+});
+
+// Schedule
+exports.createScheduleSchema = Joi.object({
+  course: Joi.string().hex().length(24).required(),
+  teacher: Joi.string().hex().length(24).required(),
+  room: Joi.string().hex().length(24).required(),
+  program: Joi.string().hex().length(24).required(),
+  dayOfWeek: Joi.number().min(0).max(6).required(), // 0=Lundi...5=Samedi
+  startTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  endTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  semester: Joi.number().valid(1, 2).required(),
+  academicYear: Joi.string().required(),
+  week: Joi.string().valid('A', 'B', 'all').default('all'),
+});
+
+
+const Joi = require('joi');
+
+exports.createStudentSchema = Joi.object({
+  firstName: Joi.string().min(2).max(50).required(),
+  lastName: Joi.string().min(2).max(50).required(),
+  email: Joi.string().email().required(),
+  dateOfBirth: Joi.date().required(),
+  gender: Joi.string().valid('male', 'female').required(),
+  phone: Joi.string().optional(),
+  address: Joi.object({
+    street: Joi.string().optional(),
+    city: Joi.string().optional(),
+    country: Joi.string().optional(),
+  }).optional(),
+  program: Joi.string().hex().length(24).required(),
+  level: Joi.number().valid(1, 2, 3, 4, 5).required(),
+  academicYear: Joi.string().required(),
+  nationalId: Joi.string().optional(),
+  guardianName: Joi.string().optional(),
+  guardianPhone: Joi.string().optional(),
+  guardianEmail: Joi.string().email().optional(),
+});
+
+exports.updateStudentSchema = Joi.object({
+  firstName: Joi.string().min(2).max(50).optional(),
+  lastName: Joi.string().min(2).max(50).optional(),
+  phone: Joi.string().optional(),
+  address: Joi.object({
+    street: Joi.string().optional(),
+    city: Joi.string().optional(),
+    country: Joi.string().optional(),
+  }).optional(),
+  guardianName: Joi.string().optional(),
+  guardianPhone: Joi.string().optional(),
+  guardianEmail: Joi.string().email().optional(),
+});

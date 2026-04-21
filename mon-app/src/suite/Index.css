@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  font-family: 'Outfit', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  @apply bg-gray-50 text-gray-900;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-200 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-300;
+}
+
+/* Thin scrollbar class */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* Animate slide up for toasts */
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  animation: slideUp 0.2s ease-out;
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 8px;
+}

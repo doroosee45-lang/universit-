@@ -1,0 +1,138 @@
+version: '3.9'
+
+services:
+  # ─── Backend API ─────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: university_api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://mongo:27017/university_db
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey2024}
+      JWT_EXPIRE: 7d
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-refreshsecretkey2024}
+      JWT_REFRESH_EXPIRE: 30d
+      CLIENT_URL: http://localhost:3000
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM: noreply@universite.dz
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - university_net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ─── MongoDB ─────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: university_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-adminpass}
+      MONGO_INITDB_DATABASE: university_db
+    volumes:
+      - mongo_data:/data/db
+      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - university_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─── Redis (cache + sessions) ────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: university_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redispass}
+    volumes:
+      - redis_data:/data
+    networks:
+      - university_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redispass}", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ─── Mongo Express (interface admin MongoDB) ──────────────────
+  mongo-express:
+    image: mongo-express:1.0
+    container_name: university_mongoexpress
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USER:-admin}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:-adminpass}
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-adminpass}@mongo:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: ${MEXPRESS_USER:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MEXPRESS_PASS:-mexpress123}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - university_net
+    profiles:
+      - dev  # Seulement en dev : docker compose --profile dev up
+
+  # ─── Nginx Reverse Proxy ──────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: university_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+    networks:
+      - university_net
+
+# ─── Volumes persistants ──────────────────────────────────────
+volumes:
+  mongo_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ─── Réseau interne ───────────────────────────────────────────
+networks:
+  university_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

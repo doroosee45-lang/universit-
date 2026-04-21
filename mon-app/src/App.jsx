@@ -8,7 +8,7 @@ import LoginPage from './pages/Auth/LoginPage';
 import ForgotPasswordPage from './pages/Auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/Auth/ResetPasswordPage';
 import VerifyEmailPage from './pages/Auth/VerifyEmailPage';
-import ForceChangePasswordPage from './pages/Auth/ForceChangePasswordPage';
+import ForceChangePasswordPage from './pages/Auth/Forcechangepasswordpage';
 
 // Admin pages
 import AdminDashboard from './pages/Admin/AdminDashboard';

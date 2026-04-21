@@ -4,62 +4,62 @@ import { MainLayout } from './components/layout/MainLayout';
 
 // Auth pages
 
-import LoginPage from './pages/auth/LoginPage';
+import LoginPage from './pages/Auth/LoginPage';
 import ForgotPasswordPage from './pages/Auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/Auth/ResetPasswordPage';
 import VerifyEmailPage from './pages/Auth/VerifyEmailPage';
 import ForceChangePasswordPage from './pages/Auth/ForceChangePasswordPage';
 
 // Admin pages
-import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminDashboard from './pages/Admin/AdminDashboard';
 import StudentsPage from './pages/Admin/StudentsPage';
-import TeachersPage from './pages/admin/TeachersPage';
-import StaffPage from './pages/admin/StaffPage';
-import ProgramsPage from './pages/admin/ProgramsPage';
-import CoursesPage from './pages/admin/CoursesPage';
-import SchedulePage from './pages/admin/SchedulePage';
-import GradesPage from './pages/admin/GradesPage';
-import AttendancePage from './pages/admin/AttendancePage';
-import ExamsPage from './pages/admin/ExamsPage';
-import FeesPage from './pages/admin/FeesPage';
-import LibraryPage from './pages/admin/LibraryPage';
-import InternshipsPage from './pages/admin/InternshipsPage';
-import DiplomasPage from './pages/admin/DiplomasPage';
-import ReportsPage from './pages/admin/ReportsPage';
-import SettingsPage from './pages/admin/SettingsPage';
-import NotificationsAdminPage from './pages/admin/NotificationsAdminPage';
-import ArchivePage from './pages/admin/ArchivePage';
+import TeachersPage from './pages/Admin/TeachersPage';
+import StaffPage from './pages/Admin/StaffPage';
+import ProgramsPage from './pages/Admin/ProgramsPage';
+import CoursesPage from './pages/Admin/CoursesPage';
+import SchedulePage from './pages/Admin/SchedulePage';
+import GradesPage from './pages/Admin/GradesPage';
+import AttendancePage from './pages/Admin/AttendancePage';
+import ExamsPage from './pages/Admin/ExamsPage';
+import FeesPage from './pages/Admin/FeesPage';
+import LibraryPage from './pages/Admin/LibraryPage';
+import InternshipsPage from './pages/Admin/InternshipsPage';
+import DiplomasPage from './pages/Admin/DiplomasPage';
+import ReportsPage from './pages/Admin/ReportsPage';
+import SettingsPage from './pages/Admin/SettingsPage';
+import NotificationsAdminPage from './pages/Admin/NotificationsAdminPage';
+import ArchivePage from './pages/Admin/ArchivePage';
 import AdminJuryPage from './pages/Admin/AdminJuryPage';        // ✅ chemin corrigé
-import UEAdminPage from './pages/admin/UEAdminPage';
+import UEAdminPage from './pages/Admin/UEAdminPage';
 
 // Teacher pages
-import TeacherDashboard from './pages/teacher/TeacherDashboard';
-import TeacherCoursesPage from './pages/teacher/TeacherCoursesPage';
-import TeacherAttendancePage from './pages/teacher/TeacherAttendancePage';
-import TeacherGradesPage from './pages/teacher/TeacherGradesPage';
-import TeacherAssignmentsPage from './pages/teacher/TeacherAssignmentsPage';
-import TeacherSchedulePage from './pages/teacher/TeacherSchedulePage';
-import TeacherStudentsPage from './pages/teacher/TeacherStudentsPage';
-import TeacherProfilePage from './pages/teacher/TeacherProfilePage';
-import TeacherNotificationsPage from './pages/teacher/TeacherNotificationsPage';
+import TeacherDashboard from './pages/Teacher/TeacherDashboard';
+import TeacherCoursesPage from './pages/Teacher/TeacherCoursesPage';
+import TeacherAttendancePage from './pages/Teacher/TeacherAttendancePage';
+import TeacherGradesPage from './pages/Teacher/TeacherGradesPage';
+import TeacherAssignmentsPage from './pages/Teacher/TeacherAssignmentsPage';
+import TeacherSchedulePage from './pages/Teacher/TeacherSchedulePage';
+import TeacherStudentsPage from './pages/Teacher/TeacherStudentsPage';
+import TeacherProfilePage from './pages/Teacher/TeacherProfilePage';
+import TeacherNotificationsPage from './pages/Teacher/TeacherNotificationsPage';
 import TeacherJuryPage from './pages/Teacher/TeacherJurry';    // ✅ import corrigé
 import TeacherSettingsPage from './pages/Teacher/TeacherSettingsPage'
 import TeacherExamsPage from './pages/Teacher/TeacherExamsPage'
 
 // Student pages
-import StudentDashboard from './pages/student/StudentDashboard';
-import StudentGradesPage from './pages/student/StudentGradesPage';
-import StudentAttendancePage from './pages/student/StudentAttendancePage';
-import StudentSchedulePage from './pages/student/StudentSchedulePage';
-import StudentHomeworkPage from './pages/student/StudentHomeworkPage';
+import StudentDashboard from './pages/Student/StudentDashboard';
+import StudentGradesPage from './pages/Student/StudentGradesPage';
+import StudentAttendancePage from './pages/Student/StudentAttendancePage';
+import StudentSchedulePage from './pages/Student/StudentSchedulePage';
+import StudentHomeworkPage from './pages/Student/StudentHomeworkPage';
 
 import StudentCourses from './pages/Student/Studentcoursespage';
-import StudentExamsPage from './pages/student/StudentExamsPage';
-import StudentFeesPage from './pages/student/StudentFeesPage';
-import StudentLibraryPage from './pages/student/StudentLibraryPage';
-import StudentInternshipPage from './pages/student/StudentInternshipPage';
-import StudentProfilePage from './pages/student/StudentProfilePage';
-import StudentNotificationsPage from './pages/student/StudentNotificationsPage';
+import StudentExamsPage from './pages/Student/StudentExamsPage';
+import StudentFeesPage from './pages/Student/StudentFeesPage';
+import StudentLibraryPage from './pages/Student/StudentLibraryPage';
+import StudentInternshipPage from './pages/Student/StudentInternshipPage';
+import StudentProfilePage from './pages/Student/StudentProfilePage';
+import StudentNotificationsPage from './pages/Student/StudentNotificationsPage';
 import StudentSettingsPage from './pages/Student/StudentSettingsPage'
 import StudentCoursesPage from './pages/Student/Studentcoursespage';
 

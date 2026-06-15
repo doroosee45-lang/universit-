@@ -159,10 +159,14 @@ export default function HomePage() {
 
   return (
     <div className="hp">
+      {/* Image de fond fixe — fonctionne sur iOS et tous navigateurs */}
+      <div className="hp-bg" aria-hidden="true"/>
+
       {/* ═══ STYLES ══════════════════════════════════════════════════ */}
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
-        .hp{font-family:'Poppins',sans-serif;overflow-x:hidden;color:#1e1b4b;background-image:url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=1600&q=85');background-size:cover;background-position:center top;background-attachment:fixed;}
+        .hp{font-family:'Poppins',sans-serif;overflow-x:hidden;color:#1e1b4b;}
+        .hp-bg{position:fixed;inset:0;z-index:-1;background-image:url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=1600&q=85');background-size:cover;background-position:center top;}
 
         /* ── KEYFRAMES ─────────────────────────────────── */
         @keyframes blobMove{
@@ -384,7 +388,6 @@ export default function HomePage() {
 
         /* ══ RESPONSIVE ════════════════════════════════════════ */
         @media(max-width:900px){
-          .hp{background-attachment:scroll;}
           .hp-sec-feat-bg{background-attachment:scroll;}
           .hp-nav-links{display:none;}
           .hp-menu-btn{display:flex;}

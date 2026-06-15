@@ -10,7 +10,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
-const connectDB = require('./config/database');
+// const connectDB = require('./config/database');
 const { initSocket } = require('./config/Socket');
 const { initJobs } = require('./Jobs/Index');
 const routes = require('./routes/Index');
@@ -20,10 +20,17 @@ const logger = require('./utils/Logger');
 const app = express();
 const server = http.createServer(app);
 
-connectDB();
 initSocket(server);
 
+const mongoose = require('mongoose');
+if (!process.env.MONGO_URI) {
+  console.error('❌ MONGO_URI manquant dans les variables d\'environnement');
+  process.exit(1);
+}
 
+mongoose.connect(process.env.MONGO_URI, { family: 4 })
+  .then(() => console.log('✅ MongoDB connecté à Atlas'))
+  .catch(err => { console.error('❌ Erreur MongoDB:', err.message); process.exit(1); });
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
@@ -35,8 +42,10 @@ app.use(cors({
       'http://localhost:3000',
     ].filter(Boolean);
 
-    // Autorise les requêtes sans origin (Postman, mobile, etc.)
-    if (!origin || allowed.includes(origin)) {
+    // En production, accepter aussi tous les sous-domaines onrender.com
+    const isRender = origin && /\.onrender\.com$/.test(origin);
+
+    if (!origin || allowed.includes(origin) || isRender) {
       callback(null, true);
     } else {
       callback(new Error(`CORS bloqué pour : ${origin}`));

@@ -1,0 +1,51 @@
+services:
+  # ── Backend API — Node.js Web Service ─────────────────────────────────────
+  - type: web
+    name: acan-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false          # ← à saisir dans le dashboard Render
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: JWT_REFRESH_EXPIRE
+        value: 30d
+      - key: CLIENT_URL
+        sync: false          # ← URL du frontend après déploiement, ex: https://acan-frontend.onrender.com
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+  # ── Frontend React — Static Site ───────────────────────────────────────────
+  - type: web
+    name: acan-frontend
+    runtime: static
+    rootDir: mon-app
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        sync: false          # ← URL du backend + /api, ex: https://acan-backend.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

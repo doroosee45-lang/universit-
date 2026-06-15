@@ -3,6 +3,9 @@ import { AuthProvider } from './components/context/AuthContext';
 import { MainLayout } from './components/layout/MainLayout';
 import { GraduationCap, Home } from 'lucide-react';
 
+// Home
+import HomePage from './pages/HomePage';
+
 // Auth pages
 import LoginPage               from './pages/Auth/LoginPage';
 import ForgotPasswordPage      from './pages/Auth/ForgotPasswordPage';
@@ -121,7 +124,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           {/* ── Public ──────────────────────────────────── */}
-          <Route path="/"                          element={<Navigate to="/login" replace />} />
+          <Route path="/"                          element={<HomePage />} />
           <Route path="/login"                     element={<LoginPage />} />
           <Route path="/forgot-password"           element={<ForgotPasswordPage />} />
           <Route path="/reset-password/:token"     element={<ResetPasswordPage />} />

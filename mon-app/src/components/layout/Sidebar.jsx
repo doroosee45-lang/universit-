@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen, ClipboardList,
   Calendar, DollarSign, Library, Briefcase, FileText, Settings,
@@ -215,7 +215,7 @@ export const Sidebar = ({ collapsed, onToggle, mobileOpen, onMobileClose }) => {
       {/* ── Marque ────────────────────────────────── */}
       <div className="relative flex items-center justify-between px-4 py-4 border-b border-white/[0.06] shrink-0">
         {/* Logo + titre (visible quand non collapsé) */}
-        <div className={`flex items-center gap-3 ${collapsed ? 'md:hidden' : ''}`}>
+        <Link to="/" className={`flex items-center gap-3 min-w-0 ${collapsed ? 'md:hidden' : ''}`} style={{ textDecoration:'none' }}>
           <div className="relative shrink-0">
             <div className="absolute inset-0 bg-indigo-500 rounded-xl blur-md opacity-40" />
             <div className="relative w-9 h-9 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -226,15 +226,15 @@ export const Sidebar = ({ collapsed, onToggle, mobileOpen, onMobileClose }) => {
             <p className="text-[15px] font-bold text-white leading-tight tracking-tight truncate">Omedev School</p>
             <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">Gestion Universitaire</p>
           </div>
-        </div>
+        </Link>
 
         {/* Icône seule quand collapsé sur desktop */}
-        <div className={`relative mx-auto ${collapsed ? 'md:block' : 'md:hidden'} hidden`}>
+        <Link to="/" className={`relative mx-auto ${collapsed ? 'md:block' : 'md:hidden'} hidden`} style={{ textDecoration:'none' }}>
           <div className="absolute inset-0 bg-indigo-500 rounded-xl blur-md opacity-40" />
           <div className="relative w-9 h-9 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center">
             <School size={19} className="text-white" />
           </div>
-        </div>
+        </Link>
 
         {/* Bouton fermer (mobile) */}
         <button

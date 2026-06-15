@@ -1,4 +1,4 @@
-// pages/teacher/TeacherProfilePage.jsx
+﻿// pages/teacher/TeacherProfilePage.jsx
 import { useState } from 'react';
 import { Save, X } from 'lucide-react';
 import { teacherAPI } from '../../services/services';
@@ -160,7 +160,7 @@ export default function TeacherProfilePage() {
         <div className="space-y-4">
           <Input label="Téléphone" value={form.phone} onChange={e => setField('phone', e.target.value)} />
           <Input label="Rue" value={form.address.street} onChange={e => setAddress('street', e.target.value)} />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Ville" value={form.address.city} onChange={e => setAddress('city', e.target.value)} />
             <Input label="Wilaya" value={form.address.wilaya} onChange={e => setAddress('wilaya', e.target.value)} />
           </div>

@@ -1,9 +1,22 @@
+const crypto = require('crypto');
 const Student = require('../models/Student.model');
 const User = require('../models/User.model');
 const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
-const { getPagination, buildSearchFilter, generateStudentId, getCurrentAcademicYear } = require('../utils/helpers');
+const { getPagination, buildSearchFilter, generateStudentId, getCurrentAcademicYear, generateToken } = require('../utils/helpers');
 const { exportStudentsToExcel, importStudentsFromExcel } = require('../services/Excel.service');
-const { sendNotification } = require('../services/notification.service');
+const { sendActivationEmail } = require('../services/email.service');
+
+// Génère un mot de passe temporaire lisible (12 chars)
+const generateTempPassword = () => {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const specials = '@#$!';
+  let pass = '';
+  for (let i = 0; i < 8; i++) pass += chars[Math.floor(Math.random() * chars.length)];
+  pass += specials[Math.floor(Math.random() * specials.length)];
+  pass += Math.floor(Math.random() * 90 + 10);
+  // Mélanger pour éviter un pattern prévisible
+  return pass.split('').sort(() => Math.random() - 0.5).join('');
+};
 
 // GET /api/students
 const getAllStudents = async (req, res, next) => {
@@ -49,23 +62,55 @@ const getStudentById = async (req, res, next) => {
 // POST /api/students
 const createStudent = async (req, res, next) => {
   try {
-    const { firstName, lastName, email, password, program, level, currentSemester, academicYear, ...rest } = req.body;
+    const {
+      firstName, lastName, email,
+      program, level, currentSemester, academicYear,
+      ...rest
+    } = req.body;
 
-    // Générer N° étudiant
-    const count = await Student.countDocuments({ academicYear: academicYear || getCurrentAcademicYear() });
-    const studentId = generateStudentId(new Date().getFullYear(), count + 1);
+    // Vérifier l'unicité de l'email
+    const existing = await User.findOne({ email: email?.toLowerCase() });
+    if (existing) return badRequest(res, 'Cet email est déjà utilisé.');
+
+    // Générer le matricule
+    const year = new Date().getFullYear();
+    const count = await Student.countDocuments();
+    const studentId = generateStudentId(year, count + 1);
+
+    // Générer le mot de passe temporaire
+    const tempPassword = generateTempPassword();
+
+    // Générer le token d'activation (48h)
+    const rawActivationToken = generateToken(32);
+    const hashedActivationToken = crypto.createHash('sha256').update(rawActivationToken).digest('hex');
 
     const student = await Student.create({
-      firstName, lastName, email,
-      password: password || 'Etudiant@123',
+      firstName,
+      lastName,
+      email,
+      password: tempPassword,
       role: 'student',
-      program, level, currentSemester,
+      program,
+      level,
+      currentSemester,
       academicYear: academicYear || getCurrentAcademicYear(),
       studentId,
+      mustChangePassword: true,
+      activationToken: hashedActivationToken,
+      activationTokenExpires: new Date(Date.now() + 48 * 60 * 60 * 1000),
       ...rest
     });
 
-    return created(res, student, 'Étudiant créé avec succès.');
+    // Envoyer l'email d'activation (ne bloque pas si ça échoue)
+    sendActivationEmail(student, rawActivationToken, tempPassword).catch(err => {
+      console.error('Erreur envoi email activation:', err.message);
+    });
+
+    // Ne pas renvoyer le mot de passe en clair dans la réponse
+    const studentOut = student.toObject();
+    delete studentOut.password;
+
+    return created(res, studentOut, `Étudiant créé. Email d'activation envoyé à ${email}.`);
   } catch (err) {
     next(err);
   }
@@ -74,7 +119,7 @@ const createStudent = async (req, res, next) => {
 // PUT /api/students/:id
 const updateStudent = async (req, res, next) => {
   try {
-    const forbidden = ['password', 'role', 'email', 'studentId'];
+    const forbidden = ['password', 'role', 'email', 'studentId', 'activationToken', 'mustChangePassword'];
     forbidden.forEach(f => delete req.body[f]);
 
     const student = await Student.findByIdAndUpdate(req.params.id, req.body, {
@@ -88,7 +133,7 @@ const updateStudent = async (req, res, next) => {
   }
 };
 
-// DELETE /api/students/:id (désactivation)
+// DELETE /api/students/:id (désactivation douce)
 const deleteStudent = async (req, res, next) => {
   try {
     const student = await Student.findByIdAndUpdate(
@@ -127,31 +172,61 @@ const importStudents = async (req, res, next) => {
     for (const row of rows) {
       try {
         const exists = await User.findOne({ email: row.email });
-        if (!exists) {
-          const count = await Student.countDocuments();
-          await Student.create({
-            ...row,
-            role: 'student',
-            studentId: generateStudentId(new Date().getFullYear(), count + 1),
-            password: 'Etudiant@123',
-            academicYear: getCurrentAcademicYear()
-          });
-          results.created++;
-        } else {
+        if (exists) {
           results.errors.push(`Email déjà utilisé : ${row.email}`);
+          continue;
         }
+
+        const count = await Student.countDocuments();
+        const tempPassword = generateTempPassword();
+        const rawToken = generateToken(32);
+        const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+        const student = await Student.create({
+          ...row,
+          role: 'student',
+          studentId: generateStudentId(new Date().getFullYear(), count + 1),
+          password: tempPassword,
+          mustChangePassword: true,
+          activationToken: hashedToken,
+          activationTokenExpires: new Date(Date.now() + 48 * 60 * 60 * 1000),
+          academicYear: row.academicYear || getCurrentAcademicYear()
+        });
+
+        sendActivationEmail(student, rawToken, tempPassword).catch(() => {});
+        results.created++;
       } catch (e) {
-        results.errors.push(`Erreur ligne ${row.email}: ${e.message}`);
+        results.errors.push(`Erreur (${row.email}): ${e.message}`);
       }
     }
 
-    return success(res, results, `Import terminé : ${results.created} étudiants créés.`);
+    return success(res, results, `Import terminé : ${results.created} étudiant(s) créé(s).`);
   } catch (err) {
     next(err);
   }
 };
 
-// GET /api/students/me/profile (étudiant connecté)
+// POST /api/students/:id/photo
+const uploadStudentPhoto = async (req, res, next) => {
+  try {
+    if (!req.file) return badRequest(res, 'Aucun fichier uploadé.');
+
+    const photoUrl = `/uploads/profiles/${req.file.filename}`;
+
+    const student = await Student.findByIdAndUpdate(
+      req.params.id,
+      { profilePhoto: photoUrl },
+      { new: true }
+    ).populate('program', 'name code');
+
+    if (!student) return notFound(res, 'Étudiant introuvable.');
+    return success(res, { profilePhoto: photoUrl, student }, 'Photo mise à jour.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/students/me/profile
 const getMyProfile = async (req, res, next) => {
   try {
     const student = await Student.findById(req.user._id)
@@ -162,14 +237,15 @@ const getMyProfile = async (req, res, next) => {
     next(err);
   }
 };
+
 module.exports = {
   getAllStudents,
   getMyProfile,
   getStudentById,
   createStudent,
-  updateStudent,        // ← Doit exister
+  updateStudent,
   deleteStudent,
   exportStudents,
   importStudents,
-  // updateMyProfile,   // si tu l'utilises
+  uploadStudentPhoto
 };

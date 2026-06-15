@@ -1,789 +1,980 @@
-// StudentsPage.jsx – Version corrigée
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Plus, Download, Upload, Edit, Trash2, Eye,
-  ChevronLeft, ChevronRight, X, CheckCircle, AlertCircle
+  Plus, Edit2, Trash2, Eye, X, Search, GraduationCap, Users,
+  Mail, Phone, Calendar, Hash, Camera, ChevronLeft, ChevronRight,
+  RefreshCw, FileText, UserCheck, Award, AlertCircle, CheckCircle,
+  MapPin, Globe, User, BookOpen, Loader2, LayoutList, LayoutGrid,
+  HeartHandshake,
 } from 'lucide-react';
 import { studentAPI, programAPI } from '../../services/services';
 
-// ============================================================
-// 1. CONSTANTES & UTILITAIRES
-// ============================================================
-const LEVELS = ['L1', 'L2', 'L3', 'M1', 'M2'];
+const PHOTO_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace('/api', '');
 
-const getCurrentAcademicYear = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  return month >= 9 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+const LEVELS    = ['L1','L2','L3','M1','M2','D1','D2','D3','BTS1','BTS2','BUT1','BUT2','BUT3'];
+const SEMESTERS = ['S1','S2','S3','S4','S5','S6','S7','S8','S9','S10'];
+
+const STATUS_CFG = {
+  active:    { label: 'Actif',    cls: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
+  suspended: { label: 'Suspendu', cls: 'bg-amber-100   text-amber-700   ring-amber-200' },
+  graduated: { label: 'Diplômé',  cls: 'bg-indigo-100  text-indigo-700  ring-indigo-200' },
+  expelled:  { label: 'Exclu',    cls: 'bg-red-100     text-red-700     ring-red-200' },
+  on_leave:  { label: 'Congé',    cls: 'bg-slate-100   text-slate-600   ring-slate-200' },
 };
 
-const formatDate = (date) => {
-  if (!date) return '—';
-  return new Date(date).toLocaleDateString('fr-FR');
-};
+const PALETTE = [
+  ['#6366f1','#4338ca'], ['#ec4899','#be185d'], ['#f59e0b','#b45309'],
+  ['#10b981','#047857'], ['#3b82f6','#1d4ed8'], ['#8b5cf6','#6d28d9'],
+  ['#ef4444','#b91c1c'], ['#06b6d4','#0e7490'],
+];
 
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'active':    return 'bg-green-100 text-green-700';
-    case 'inactive':  return 'bg-gray-100 text-gray-700';
-    case 'suspended': return 'bg-red-100 text-red-700';
-    case 'expelled':  return 'bg-orange-100 text-orange-700';
-    case 'graduated': return 'bg-blue-100 text-blue-700';
-    case 'on_leave':  return 'bg-yellow-100 text-yellow-700';
-    default:          return 'bg-gray-100 text-gray-700';
-  }
-};
+function avatarGrad(name = '') {
+  return PALETTE[(name.charCodeAt(0) || 0) % PALETTE.length];
+}
 
-const getStatusLabel = (status) => {
-  const labels = {
-    active: 'Actif', inactive: 'Inactif', suspended: 'Suspendu',
-    expelled: 'Exclu', graduated: 'Diplômé', on_leave: 'Congé'
-  };
-  return labels[status] || status || '—';
-};
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 
-// ✅ Nettoyer le payload avant envoi — supprime les chaînes vides et champs inutiles
-const cleanPayload = (data) => {
-  const payload = { ...data };
+function currentAcYear() {
+  const y = new Date().getFullYear();
+  return new Date().getMonth() >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+}
 
-  // Champs avec index unique sparse — NE PAS envoyer vide
-  if (!payload.studentId) delete payload.studentId;
-  if (!payload.ine)       delete payload.ine;
+// ── Sub-components ────────────────────────────────────────────────────────────
 
-  // Champs optionnels — supprimer si vides
-  if (!payload.phone)        delete payload.phone;
-  if (!payload.dateOfBirth)  delete payload.dateOfBirth;
-  if (!payload.placeOfBirth) delete payload.placeOfBirth;
-  if (!payload.notes)        delete payload.notes;
-  if (!payload.studentCardUrl) delete payload.studentCardUrl;
+function Avatar({ student, size = 36, showCamera = false, onClick }) {
+  const name  = (student?.firstName || '') + (student?.lastName || '');
+  const [c1, c2] = avatarGrad(name);
+  const ini   = `${student?.firstName?.[0] || ''}${student?.lastName?.[0] || ''}`.toUpperCase() || '?';
+  const url   = student?.profilePhoto ? `${PHOTO_BASE}${student.profilePhoto}` : null;
+  const fs    = size > 56 ? 22 : size > 36 ? 14 : 11;
 
-  // Guardian — supprimer si tout vide
-  if (payload.guardian) {
-    const g = payload.guardian;
-    if (!g.name && !g.phone && !g.email && !g.relation) {
-      delete payload.guardian;
-    } else {
-      // Nettoyer les sous-champs vides
-      const cleanGuardian = {};
-      if (g.name)     cleanGuardian.name = g.name;
-      if (g.phone)    cleanGuardian.phone = g.phone;
-      if (g.email)    cleanGuardian.email = g.email;
-      if (g.relation) cleanGuardian.relation = g.relation;
-      payload.guardian = cleanGuardian;
-    }
-  }
-
-  return payload;
-};
-
-// ============================================================
-// 2. SYSTÈME DE TOAST
-// ============================================================
-const useToast = () => {
-  const [toasts, setToasts] = useState([]);
-
-  const toast = useCallback((message, type = 'success') => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
-  }, []);
-
-  const ToastContainer = () => (
-    <div className="fixed bottom-4 right-4 z-50 space-y-2">
-      {toasts.map(t => (
-        <div key={t.id} className={`px-4 py-2 rounded-lg shadow-lg text-white text-sm flex items-center gap-2 transition-all ${t.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
-          {t.type === 'error' ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
-          {t.message}
+  return (
+    <div
+      className={`relative rounded-full overflow-hidden flex-shrink-0 ${onClick ? 'cursor-pointer group' : ''}`}
+      style={{ width: size, height: size }}
+      onClick={onClick}
+    >
+      {url ? (
+        <img src={url} alt={ini} className="w-full h-full object-cover" />
+      ) : (
+        <div
+          className="w-full h-full flex items-center justify-center font-semibold text-white select-none"
+          style={{ background: `linear-gradient(135deg, ${c1}, ${c2})`, fontSize: fs }}
+        >
+          {ini}
         </div>
-      ))}
+      )}
+      {showCamera && (
+        <div className="absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <Camera className="text-white" style={{ width: size * 0.35, height: size * 0.35 }} />
+        </div>
+      )}
     </div>
   );
+}
 
-  return { toast, ToastContainer };
-};
-
-// ============================================================
-// 3. COMPOSANTS UI
-// ============================================================
-const Spinner = ({ size = 24 }) => (
-  <div className="animate-spin rounded-full border-2 border-indigo-600 border-t-transparent"
-    style={{ width: size, height: size }} />
-);
-
-const Button = ({ children, onClick, variant = 'primary', size = 'md', type = 'button', loading, disabled, className = '' }) => {
-  const base = 'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer';
-  const variants = {
-    primary:   'bg-indigo-600 hover:bg-indigo-700 text-white',
-    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800',
-    ghost:     'hover:bg-gray-100 text-gray-600',
-    danger:    'bg-red-600 hover:bg-red-700 text-white',
-  };
-  const sizes = { sm: 'px-3 py-1.5 text-sm', md: 'px-4 py-2', icon: 'p-2' };
+function StatusBadge({ status }) {
+  const c = STATUS_CFG[status] || STATUS_CFG.active;
   return (
-    <button type={type} onClick={onClick} disabled={loading || disabled}
-      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}>
-      {loading && <Spinner size={16} />}
-      {children}
-    </button>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset ${c.cls}`}>
+      {c.label}
+    </span>
   );
-};
+}
 
-const Input = ({ label, value, onChange, type = 'text', required, placeholder, textarea, readOnly }) => {
-  const Component = textarea ? 'textarea' : 'input';
+function StatCard({ icon: Icon, label, value, iconCls }) {
   return (
-    <div className="flex flex-col gap-1">
-      {label && <label className="text-sm font-medium text-gray-700">{label}{required && <span className="text-red-500 ml-1">*</span>}</label>}
-      <Component
-        type={type}
-        value={value ?? ''}
-        onChange={onChange}
-        required={required}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 flex items-center gap-4">
+      <div className={`p-2.5 rounded-lg ${iconCls}`}>
+        <Icon className="w-5 h-5" />
+      </div>
+      <div>
+        <p className="text-2xl font-bold text-slate-800">{value ?? 0}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ icon: Icon, label, value, span2 = false }) {
+  if (!value) return null;
+  return (
+    <div className={span2 ? 'col-span-2' : ''}>
+      <p className="text-xs text-slate-400 mb-0.5">{label}</p>
+      <div className="flex items-center gap-1.5">
+        {Icon && <Icon className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />}
+        <p className="text-sm font-medium text-slate-700">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, type = 'text', placeholder, disabled }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
+      <input
+        type={type} value={value ?? ''}
+        onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        readOnly={readOnly}
-        rows={textarea ? 3 : undefined}
-        className={`border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${readOnly ? 'bg-gray-50 text-gray-500' : ''}`}
+        disabled={disabled}
+        className={`input-field w-full ${disabled ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`}
       />
     </div>
   );
-};
+}
 
-const Select = ({ label, value, onChange, options, required }) => (
-  <div className="flex flex-col gap-1">
-    {label && <label className="text-sm font-medium text-gray-700">{label}{required && <span className="text-red-500 ml-1">*</span>}</label>}
-    <select value={value ?? ''} onChange={onChange}
-      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-      {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-    </select>
-  </div>
-);
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const Badge = ({ children, className }) => (
-  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>{children}</span>
-);
-
-const Avatar = ({ firstName, lastName, size = 'sm' }) => {
-  const initials = `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
-  const sizes = { sm: 'w-8 h-8 text-sm', md: 'w-10 h-10 text-base', xl: 'w-16 h-16 text-xl' };
-  return (
-    <div className={`${sizes[size]} rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold flex-shrink-0`}>
-      {initials || '?'}
-    </div>
-  );
-};
-
-const Card = ({ children, className = '' }) => (
-  <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 ${className}`}>{children}</div>
-);
-
-const SearchInput = ({ value, onChange, placeholder }) => (
-  <input type="text" value={value} onChange={e => onChange(e.target.value)}
-    placeholder={placeholder}
-    className="border border-gray-300 rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-);
-
-const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
-  if (!isOpen) return null;
-  const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl', xl: 'max-w-4xl' };
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className={`bg-white rounded-2xl shadow-xl w-full ${sizes[size]} max-h-[90vh] flex flex-col`}
-        onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
-          <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="p-4 overflow-y-auto flex-1">{children}</div>
-      </div>
-    </div>
-  );
-};
-
-const ConfirmDialog = ({ isOpen, onClose, onConfirm, loading, title, message, confirmLabel = 'Confirmer', variant = 'danger' }) => (
-  <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-    <p className="text-gray-600 mb-5">{message}</p>
-    <div className="flex justify-end gap-2">
-      <Button variant="secondary" onClick={onClose}>Annuler</Button>
-      <Button variant={variant} onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
-    </div>
-  </Modal>
-);
-
-const Table = ({ columns, data, loading, emptyText }) => {
-  if (loading) return <div className="p-12 flex justify-center"><Spinner size={32} /></div>;
-  if (!data?.length) return (
-    <div className="p-12 text-center">
-      <div className="text-gray-300 text-5xl mb-3">👤</div>
-      <p className="text-gray-400 text-sm">{emptyText}</p>
-    </div>
-  );
-  return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-100">
-        <thead className="bg-gray-50">
-          <tr>
-            {columns.map(col => (
-              <th key={col.key} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                {col.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {data.map((row, idx) => (
-            <tr key={row._id || idx} className="hover:bg-gray-50 transition-colors">
-              {columns.map(col => (
-                <td key={col.key} className="px-4 py-3 text-sm">
-                  {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-const Pagination = ({ page, total, limit, onPageChange }) => {
-  const totalPages = Math.ceil(total / limit);
-  if (totalPages <= 1) return null;
-  return (
-    <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50 rounded-b-2xl">
-      <Button variant="secondary" size="sm" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
-        <ChevronLeft size={15} /> Précédent
-      </Button>
-      <span className="text-sm text-gray-500">Page <strong>{page}</strong> sur <strong>{totalPages}</strong></span>
-      <Button variant="secondary" size="sm" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
-        Suivant <ChevronRight size={15} />
-      </Button>
-    </div>
-  );
-};
-
-// ============================================================
-// 4. HOOK PAGINATION
-// ============================================================
-const usePagination = (apiMethod) => {
-  const [data, setData]       = useState([]);
-  const [total, setTotal]     = useState(0);
-  const [page, setPage]       = useState(1);
-  const [limit]               = useState(10);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({});
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await apiMethod({ page, limit, ...filters });
-      setData(res.data || []);
-      setTotal(res.pagination?.total || res.total || 0);
-    } catch (err) {
-      console.error('Erreur chargement étudiants:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiMethod, page, limit, filters]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const search = useCallback((newFilters) => {
-    setFilters(newFilters);
-    setPage(1);
-  }, []);
-
-  return { data, total, page, limit, loading, setPage, search, refetch: fetchData };
-};
-
-// ============================================================
-// 5. FORMULAIRE ÉTUDIANT — CORRIGÉ
-// ============================================================
-const INITIAL_FORM = {
+const EMPTY = {
   firstName: '', lastName: '', email: '', phone: '',
-  program: '', level: 'L1', currentSemester: 'S1',
-  academicYear: getCurrentAcademicYear(),
-  dateOfBirth: '', placeOfBirth: '',
-  nationality: 'Algérienne',
-  // ✅ PAS de studentId ni ine dans l'état initial (auto-générés / sparse)
+  address: { street: '', city: '', wilaya: '', postalCode: '' },
+  program: '', level: 'L1', currentSemester: 'S1', academicYear: '',
+  status: 'active', dateOfBirth: '', placeOfBirth: '', nationality: 'Algérienne',
   guardian: { name: '', phone: '', email: '', relation: '' },
-  notes: ''
+  notes: '',
 };
 
-function StudentForm({ student, programs, onSave, onCancel }) {
-  const isEdit = !!student?._id;
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
-  const [form, setForm] = useState(() => {
-    if (!student) return INITIAL_FORM;
-    // En mode édition : pré-remplir en évitant les undefined
-    return {
-      ...INITIAL_FORM,
-      ...student,
-      program: student.program?._id || student.program || '',
-      dateOfBirth: student.dateOfBirth?.substring(0, 10) || '',
-      guardian: student.guardian || INITIAL_FORM.guardian,
-    };
-  });
-
+export default function StudentsPage() {
+  const [students, setStudents] = useState([]);
+  const [total, setTotal]       = useState(0);
+  const [page,  setPage]        = useState(1);
   const [loading, setLoading]   = useState(false);
-  const { toast, ToastContainer } = useToast();
+  const [error,   setError]     = useState(null);
+  const [toast,   setToast]     = useState(null);
 
-  const set    = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const setG   = (k, v) => setForm(f => ({ ...f, guardian: { ...f.guardian, [k]: v } }));
+  const [search,         setSearch]         = useState('');
+  const [filterStatus,   setFilterStatus]   = useState('');
+  const [filterProgram,  setFilterProgram]  = useState('');
+  const [filterLevel,    setFilterLevel]    = useState('');
+  const [viewMode,       setViewMode]       = useState('table');
+  const [programs,       setPrograms]       = useState([]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.program) { toast('Veuillez sélectionner une filière', 'error'); return; }
+  // modal: { mode: 'view'|'form', student: null|{...} }
+  const [modal,    setModal]    = useState(null);
+  const [viewTab,  setViewTab]  = useState('profil');
+  const [formTab,  setFormTab]  = useState('identite');
+  const [form,     setForm]     = useState({ ...EMPTY, academicYear: currentAcYear() });
+  const [saving,   setSaving]   = useState(false);
 
+  const [photoFile,       setPhotoFile]       = useState(null);
+  const [photoPreview,    setPhotoPreview]    = useState(null);
+  const [photoUploading,  setPhotoUploading]  = useState(false);
+  const photoInputRef = useRef(null);
+
+  const PAGE_SIZE  = 10;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // Derived stats from current page (approximate visual only)
+  const counts = students.reduce((acc, s) => {
+    acc[s.status] = (acc[s.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  // ── Data loading ───────────────────────────────────────────────────────────
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      // ✅ Nettoyage complet avant envoi
-      const payload = cleanPayload(form);
-
-      if (isEdit) {
-        await studentAPI.update(student._id, payload);
-      } else {
-        // Mot de passe par défaut si non renseigné
-        if (!payload.password) payload.password = 'Etudiant@123';
-        await studentAPI.create(payload);
-      }
-      onSave();
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Une erreur est survenue';
-      toast(msg, 'error');
+      const params = { page, limit: PAGE_SIZE };
+      if (search)        params.search  = search;
+      if (filterStatus)  params.status  = filterStatus;
+      if (filterProgram) params.program = filterProgram;
+      if (filterLevel)   params.level   = filterLevel;
+      const res = await studentAPI.getAll(params);
+      setStudents(res.data       || []);
+      setTotal(res.pagination?.total || res.total || 0);
+    } catch (e) {
+      setError(e.message || 'Erreur de chargement');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, search, filterStatus, filterProgram, filterLevel]);
 
-  const programOptions = [
-    { value: '', label: '— Sélectionner une filière —' },
-    ...(programs || []).map(p => ({ value: p._id, label: `${p.name} (${p.code})` }))
-  ];
-  const semOptions   = ['S1','S2','S3','S4','S5','S6','S7','S8'].map(s => ({ value: s, label: s }));
-  const levelOptions = LEVELS.map(l => ({ value: l, label: l }));
-  const relOptions   = [
-    { value: '', label: '— Sélectionner —' },
-    ...['Père','Mère','Tuteur','Autre'].map(r => ({ value: r, label: r }))
-  ];
+  useEffect(() => { load(); }, [load]);
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <ToastContainer />
-
-      {/* Identité */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Identité</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Prénom" value={form.firstName} onChange={e => set('firstName', e.target.value)} required />
-          <Input label="Nom" value={form.lastName} onChange={e => set('lastName', e.target.value)} required />
-        </div>
-      </div>
-
-      {/* Contact */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Contact</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Email" type="email" value={form.email} onChange={e => set('email', e.target.value)} required />
-          <Input label="Téléphone" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="Optionnel" />
-        </div>
-      </div>
-
-      {/* Scolarité */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Scolarité</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <Select label="Filière" value={form.program} onChange={e => set('program', e.target.value)} options={programOptions} required />
-          <Select label="Niveau" value={form.level} onChange={e => set('level', e.target.value)} options={levelOptions} required />
-          <Select label="Semestre actuel" value={form.currentSemester} onChange={e => set('currentSemester', e.target.value)} options={semOptions} required />
-          <Input label="Année académique" value={form.academicYear} onChange={e => set('academicYear', e.target.value)} required />
-        </div>
-        {isEdit && (
-          <div className="mt-3">
-            <Input label="Matricule étudiant" value={student.studentId || 'Auto-généré'} readOnly />
-          </div>
-        )}
-      </div>
-
-      {/* Informations personnelles */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Informations personnelles</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Date de naissance" type="date" value={form.dateOfBirth} onChange={e => set('dateOfBirth', e.target.value)} />
-          <Input label="Lieu de naissance" value={form.placeOfBirth} onChange={e => set('placeOfBirth', e.target.value)} placeholder="Optionnel" />
-          <Input label="Nationalité" value={form.nationality} onChange={e => set('nationality', e.target.value)} />
-          {/* ✅ INE : champ optionnel — envoyé uniquement si renseigné */}
-          <Input label="INE (optionnel)" value={form.ine || ''} onChange={e => set('ine', e.target.value)} placeholder="Laisser vide si inconnu" />
-        </div>
-      </div>
-
-      {/* Mot de passe — création uniquement */}
-      {!isEdit && (
-        <div>
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Accès</h4>
-          <Input label="Mot de passe" type="password"
-            value={form.password || ''}
-            onChange={e => set('password', e.target.value)}
-            placeholder="Laisser vide → 'Etudiant@123'" />
-        </div>
-      )}
-
-      {/* Tuteur */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Tuteur / Parent (optionnel)</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Nom" value={form.guardian.name} onChange={e => setG('name', e.target.value)} />
-          <Input label="Téléphone" value={form.guardian.phone} onChange={e => setG('phone', e.target.value)} />
-          <Input label="Email" value={form.guardian.email} onChange={e => setG('email', e.target.value)} />
-          <Select label="Relation" value={form.guardian.relation} onChange={e => setG('relation', e.target.value)} options={relOptions} />
-        </div>
-      </div>
-
-      {/* Notes */}
-      <Input label="Notes administratives" value={form.notes} onChange={e => set('notes', e.target.value)} textarea placeholder="Observations, remarques..." />
-
-      {/* Actions */}
-      <div className="flex gap-3 pt-2 border-t">
-        <Button variant="secondary" type="button" onClick={onCancel} className="flex-1">Annuler</Button>
-        <Button type="submit" loading={loading} className="flex-1">
-          {isEdit ? '✏️ Mettre à jour' : '➕ Créer l\'étudiant'}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-// ============================================================
-// 6. MODAL DÉTAILS ÉTUDIANT
-// ============================================================
-function StudentDetails({ student }) {
-  const infos = [
-    ['Email',            student.email],
-    ['Téléphone',        student.phone || '—'],
-    ['INE',              student.ine   || '—'],
-    ['Filière',          student.program?.name || '—'],
-    ['Niveau / Semestre',`${student.level} / ${student.currentSemester}`],
-    ['Année académique', student.academicYear],
-    ['Date de naissance',formatDate(student.dateOfBirth)],
-    ['Lieu de naissance',student.placeOfBirth || '—'],
-    ['Nationalité',      student.nationality  || '—'],
-    ['Date d\'inscription', formatDate(student.enrollmentDate)],
-  ];
-
-  return (
-    <div className="space-y-5">
-      {/* En-tête */}
-      <div className="flex items-center gap-4 p-4 bg-indigo-50 rounded-xl">
-        <Avatar firstName={student.firstName} lastName={student.lastName} size="xl" />
-        <div>
-          <h3 className="font-bold text-gray-900 text-lg">{student.firstName} {student.lastName}</h3>
-          <p className="text-sm text-indigo-600 font-mono">{student.studentId || '—'}</p>
-          <Badge className={`mt-1 ${getStatusColor(student.status)}`}>{getStatusLabel(student.status)}</Badge>
-        </div>
-      </div>
-
-      {/* Infos */}
-      <div className="grid grid-cols-2 gap-2">
-        {infos.map(([label, value]) => (
-          <div key={label} className="bg-gray-50 rounded-xl p-3">
-            <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-            <p className="font-medium text-gray-800 text-sm break-all">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Tuteur */}
-      {student.guardian?.name && (
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Tuteur / Parent</h4>
-          <div className="grid grid-cols-2 gap-2">
-            {[['Nom', student.guardian.name], ['Téléphone', student.guardian.phone || '—'],
-              ['Email', student.guardian.email || '—'], ['Relation', student.guardian.relation || '—']
-            ].map(([label, value]) => (
-              <div key={label} className="bg-gray-50 rounded-xl p-3">
-                <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-                <p className="font-medium text-gray-800 text-sm">{value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Notes */}
-      {student.notes && (
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-1">Notes administratives</h4>
-          <p className="text-sm text-gray-600 bg-yellow-50 border border-yellow-100 p-3 rounded-xl">{student.notes}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// 7. PAGE PRINCIPALE
-// ============================================================
-export default function StudentsPage() {
-  const { toast, ToastContainer } = useToast();
-  const [programs, setPrograms]   = useState([]);
-
-  const { data, total, page, limit, loading, setPage, search, refetch } =
-    usePagination(studentAPI.getAll);
-
-  const [modal,        setModal]        = useState({ open: false, student: null });
-  const [viewModal,    setViewModal]    = useState({ open: false, student: null });
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, student: null });
-  const [deleting,     setDeleting]     = useState(false);
-  const [importing,    setImporting]    = useState(false);
-  const [exporting,    setExporting]    = useState(false);
-
-  const [filters, setFilters] = useState({
-    search: '', program: '', level: '', status: '', academicYear: ''
-  });
-
-  // Charger les programmes
   useEffect(() => {
     programAPI.getAll({ limit: 100 })
-      .then(res => setPrograms(res.data || res || []))
-      .catch(err => console.error('Erreur programmes:', err));
+      .then(r => setPrograms(r.data || []))
+      .catch(() => {});
   }, []);
 
-  const handleSearch = (patch) => {
-    const f = { ...filters, ...patch };
-    setFilters(f);
-    search(f);
-  };
+  // ── Modal helpers ──────────────────────────────────────────────────────────
+  function openCreate() {
+    setForm({ ...EMPTY, academicYear: currentAcYear() });
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setFormTab('identite');
+    setModal({ mode: 'form', student: null });
+  }
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await studentAPI.delete(deleteDialog.student._id);
-      toast('Étudiant désactivé avec succès');
-      setDeleteDialog({ open: false, student: null });
-      refetch();
-    } catch (err) {
-      toast(err.response?.data?.message || err.message, 'error');
-    } finally {
-      setDeleting(false);
+  function openEdit(s) {
+    setForm({
+      firstName: s.firstName  || '',
+      lastName:  s.lastName   || '',
+      email:     s.email      || '',
+      phone:     s.phone      || '',
+      address:   { ...EMPTY.address,   ...(s.address  || {}) },
+      program:   s.program?._id || s.program || '',
+      level:     s.level           || 'L1',
+      currentSemester: s.currentSemester || 'S1',
+      academicYear:    s.academicYear    || currentAcYear(),
+      status:    s.status     || 'active',
+      dateOfBirth:  s.dateOfBirth  ? s.dateOfBirth.slice(0, 10) : '',
+      placeOfBirth: s.placeOfBirth || '',
+      nationality:  s.nationality  || 'Algérienne',
+      guardian:  { ...EMPTY.guardian, ...(s.guardian || {}) },
+      notes:     s.notes || '',
+    });
+    setPhotoFile(null);
+    setPhotoPreview(s.profilePhoto ? `${PHOTO_BASE}${s.profilePhoto}` : null);
+    setFormTab('identite');
+    setModal({ mode: 'form', student: s });
+  }
+
+  function openView(s) {
+    setViewTab('profil');
+    setModal({ mode: 'view', student: s });
+  }
+
+  function closeModal() {
+    setModal(null);
+    setPhotoFile(null);
+    setPhotoPreview(null);
+  }
+
+  function setField(path, value) {
+    const parts = path.split('.');
+    if (parts.length === 1) {
+      setForm(prev => ({ ...prev, [path]: value }));
+    } else {
+      setForm(prev => ({ ...prev, [parts[0]]: { ...prev[parts[0]], [parts[1]]: value } }));
     }
-  };
+  }
 
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const blob = await studentAPI.exportExcel();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `etudiants_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-      toast('Export Excel réussi');
-    } catch (err) {
-      toast(err.message, 'error');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleImport = async (e) => {
-    const file = e.target.files[0];
+  function onPhotoChange(e) {
+    const file = e.target.files?.[0];
     if (!file) return;
-    setImporting(true);
-    try {
-      await studentAPI.importExcel(file);
-      toast('Import réussi');
-      refetch();
-    } catch (err) {
-      toast(err.message, 'error');
-    } finally {
-      setImporting(false);
-      e.target.value = '';
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('La photo ne doit pas dépasser 2 Mo.', 'error');
+      return;
     }
-  };
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
 
-  // Options filtres
-  const programOptions = [
-    { value: '', label: 'Toutes les filières' },
-    ...programs.map(p => ({ value: p._id, label: p.name }))
-  ];
-  const yearOptions = (() => {
-    const cur = getCurrentAcademicYear();
-    const y   = parseInt(cur);
-    return [
-      { value: '', label: 'Toutes années' },
-      { value: `${y - 1}-${y}`,   label: `${y - 1}-${y}` },
-      { value: cur,                label: cur },
-      { value: `${y + 1}-${y + 2}`, label: `${y + 1}-${y + 2}` },
-    ];
-  })();
-  const STATUS_OPTIONS = [
-    { value: '', label: 'Tous les statuts' },
-    { value: 'active',    label: 'Actif' },
-    { value: 'suspended', label: 'Suspendu' },
-    { value: 'expelled',  label: 'Exclu' },
-    { value: 'graduated', label: 'Diplômé' },
-    { value: 'on_leave',  label: 'Congé' },
-  ];
-  const LEVEL_OPTIONS = [
-    { value: '', label: 'Tous les niveaux' },
-    ...LEVELS.map(l => ({ value: l, label: l }))
-  ];
+  // ── Save ───────────────────────────────────────────────────────────────────
+  async function handleSave() {
+    if (!form.firstName || !form.lastName) {
+      showToast('Prénom et nom requis.', 'error');
+      setFormTab('identite');
+      return;
+    }
+    if (!form.email) {
+      showToast('Email requis.', 'error');
+      setFormTab('identite');
+      return;
+    }
+    if (!form.program || !form.level || !form.academicYear) {
+      showToast('Filière, niveau et année académique requis.', 'error');
+      setFormTab('scolarite');
+      return;
+    }
 
-  // Colonnes tableau
-  const columns = [
-    {
-      header: 'Étudiant', key: 'firstName',
-      render: (_, row) => (
-        <div className="flex items-center gap-3">
-          <Avatar firstName={row.firstName} lastName={row.lastName} />
-          <div>
-            <p className="font-semibold text-gray-900">{row.firstName} {row.lastName}</p>
-            <p className="text-xs text-gray-400 font-mono">{row.studentId || row._id?.substring(0, 8)}</p>
-          </div>
-        </div>
-      )
-    },
-    {
-      header: 'Contact', key: 'email',
-      render: (_, row) => (
-        <div>
-          <p className="text-sm text-gray-700">{row.email}</p>
-          {row.phone && <p className="text-xs text-gray-400">{row.phone}</p>}
-        </div>
-      )
-    },
-    {
-      header: 'Filière',  key: 'program',
-      render: (_, row) => <span className="text-sm">{row.program?.name || '—'}</span>
-    },
-    {
-      header: 'Niveau',   key: 'level',
-      render: (v, row) => (
-        <div>
-          <span className="font-semibold text-gray-800">{v}</span>
-          <span className="text-gray-400 mx-1">/</span>
-          <span className="text-gray-600">{row.currentSemester}</span>
-        </div>
-      )
-    },
-    {
-      header: 'Statut',   key: 'status',
-      render: v => <Badge className={getStatusColor(v)}>{getStatusLabel(v)}</Badge>
-    },
-    {
-      header: 'Inscription', key: 'enrollmentDate',
-      render: v => <span className="text-xs text-gray-500">{formatDate(v)}</span>
-    },
-    {
-      header: 'Actions',  key: '_id',
-      render: (_, row) => (
-        <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" title="Voir le détail"
-            onClick={() => setViewModal({ open: true, student: row })}>
-            <Eye size={15} className="text-gray-500" />
-          </Button>
-          <Button size="icon" variant="ghost" title="Modifier"
-            onClick={() => setModal({ open: true, student: row })}>
-            <Edit size={15} className="text-indigo-500" />
-          </Button>
-          <Button size="icon" variant="ghost" title="Désactiver"
-            onClick={() => setDeleteDialog({ open: true, student: row })}>
-            <Trash2 size={15} className="text-red-400" />
-          </Button>
-        </div>
-      )
-    },
-  ];
+    setSaving(true);
+    try {
+      let student;
+      if (modal.student) {
+        const res = await studentAPI.update(modal.student._id, form);
+        student = res.data;
+        showToast('Étudiant mis à jour avec succès.');
+      } else {
+        const res = await studentAPI.create(form);
+        student = res.data;
+        showToast('Étudiant créé. Email d\'activation envoyé.');
+      }
 
+      if (photoFile && student?._id) {
+        setPhotoUploading(true);
+        const fd = new FormData();
+        fd.append('photo', photoFile);
+        try {
+          await studentAPI.uploadPhoto(student._id, fd);
+        } catch {
+          showToast('Données sauvegardées mais échec de l\'upload photo.', 'error');
+        } finally {
+          setPhotoUploading(false);
+        }
+      }
+
+      closeModal();
+      load();
+    } catch (e) {
+      showToast(e.message || 'Erreur lors de la sauvegarde.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  async function handleDelete(s, e) {
+    e.stopPropagation();
+    if (!confirm(`Désactiver l'étudiant ${s.firstName} ${s.lastName} ?`)) return;
+    try {
+      await studentAPI.delete(s._id);
+      showToast('Étudiant désactivé.');
+      load();
+    } catch (err) {
+      showToast(err.message || 'Erreur.', 'error');
+    }
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 p-1">
-      <ToastContainer />
+    <div className="p-6 space-y-6 min-h-screen bg-slate-50">
 
-      {/* En-tête */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Gestion des Étudiants</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {loading ? '...' : `${total} étudiant${total > 1 ? 's' : ''} enregistré${total > 1 ? 's' : ''}`}
-          </p>
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-5 right-5 z-[300] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl text-white text-sm font-medium animate-slide-up
+          ${toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
+          {toast.type === 'error'
+            ? <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            : <CheckCircle className="w-4 h-4 flex-shrink-0" />}
+          {toast.msg}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="secondary" size="sm" onClick={handleExport} loading={exporting}>
-            <Download size={14} /> Exporter
-          </Button>
-          <label className="cursor-pointer">
-            <span className={`inline-flex items-center gap-2 font-medium rounded-lg transition-colors px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 ${importing ? 'opacity-50' : ''}`}>
-              {importing ? <Spinner size={14} /> : <Upload size={14} />} Importer
-            </span>
-            <input type="file" accept=".xlsx,.xls" onChange={handleImport} className="hidden" disabled={importing} />
-          </label>
-          <Button onClick={() => setModal({ open: true, student: null })}>
-            <Plus size={15} /> Nouvel étudiant
-          </Button>
+      )}
+
+      {/* ── Page header ──────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Étudiants</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{total} étudiant{total !== 1 ? 's' : ''} enregistré{total !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            className="p-2 text-slate-500 hover:text-slate-700 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            Nouvel étudiant
+          </button>
         </div>
       </div>
 
-      {/* Filtres */}
-      <Card className="p-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-          <SearchInput value={filters.search} onChange={v => handleSearch({ search: v })} placeholder="🔍 Rechercher..." />
-          <Select value={filters.program}      onChange={e => handleSearch({ program: e.target.value })}      options={programOptions} />
-          <Select value={filters.level}        onChange={e => handleSearch({ level: e.target.value })}        options={LEVEL_OPTIONS} />
-          <Select value={filters.status}       onChange={e => handleSearch({ status: e.target.value })}       options={STATUS_OPTIONS} />
-          <Select value={filters.academicYear} onChange={e => handleSearch({ academicYear: e.target.value })} options={yearOptions} />
+      {/* ── Stat cards ───────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={Users}       label="Total"    value={total}                   iconCls="bg-indigo-50 text-indigo-600" />
+        <StatCard icon={UserCheck}   label="Actifs"   value={counts.active || 0}      iconCls="bg-emerald-50 text-emerald-600" />
+        <StatCard icon={Award}       label="Diplômés" value={counts.graduated || 0}   iconCls="bg-violet-50 text-violet-600" />
+        <StatCard icon={AlertCircle} label="Autres"   value={(counts.suspended || 0) + (counts.expelled || 0) + (counts.on_leave || 0)}
+          iconCls="bg-amber-50 text-amber-600" />
+      </div>
+
+      {/* ── Filters ──────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4">
+        <div className="flex flex-wrap gap-3 items-center">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text" value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Nom, email, matricule…"
+              className="input-field pl-9 w-full"
+            />
+          </div>
+
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="input-field">
+            <option value="">Tous statuts</option>
+            {Object.entries(STATUS_CFG).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+
+          <select value={filterProgram} onChange={e => { setFilterProgram(e.target.value); setPage(1); }} className="input-field">
+            <option value="">Toutes filières</option>
+            {programs.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+          </select>
+
+          <select value={filterLevel} onChange={e => { setFilterLevel(e.target.value); setPage(1); }} className="input-field">
+            <option value="">Tous niveaux</option>
+            {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+
+          {/* View toggle */}
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 ml-auto">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-white shadow-sm text-slate-700' : 'text-slate-400 hover:text-slate-600'}`}
+              title="Vue tableau"
+            >
+              <LayoutList className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-slate-700' : 'text-slate-400 hover:text-slate-600'}`}
+              title="Vue grille"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-      </Card>
+      </div>
 
-      {/* Tableau */}
-      <Card>
-        <Table columns={columns} data={data} loading={loading} emptyText="Aucun étudiant trouvé" />
-        <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
-      </Card>
+      {/* ── Error ────────────────────────────────────────────────────────────── */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center text-red-600">
+          <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+          <p className="font-medium">{error}</p>
+        </div>
+      )}
 
-      {/* Modal Création / Modification */}
-      <Modal
-        isOpen={modal.open}
-        onClose={() => setModal({ open: false, student: null })}
-        title={modal.student ? '✏️ Modifier l\'étudiant' : '➕ Nouvel étudiant'}
-        size="lg"
-      >
-        <StudentForm
-          student={modal.student}
-          programs={programs}
-          onSave={() => {
-            setModal({ open: false, student: null });
-            refetch();
-            toast(modal.student ? 'Étudiant mis à jour' : 'Étudiant créé avec succès');
-          }}
-          onCancel={() => setModal({ open: false, student: null })}
-        />
-      </Modal>
+      {/* ── Table view ───────────────────────────────────────────────────────── */}
+      {!error && viewMode === 'table' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {['Étudiant','Matricule','Contact','Filière & Niveau','Année acad.','Statut','Inscrit le','Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="py-16 text-center text-slate-400">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                      Chargement…
+                    </td>
+                  </tr>
+                ) : students.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-16 text-center text-slate-400">
+                      <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-25" />
+                      <p className="font-medium">Aucun étudiant trouvé</p>
+                      <p className="text-xs mt-1">Modifiez les filtres ou ajoutez un étudiant</p>
+                    </td>
+                  </tr>
+                ) : students.map(s => (
+                  <tr
+                    key={s._id}
+                    className="hover:bg-slate-50 transition-colors cursor-pointer"
+                    onClick={() => openView(s)}
+                  >
+                    {/* Étudiant */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar student={s} size={38} />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 truncate">{s.firstName} {s.lastName}</p>
+                          <p className="text-xs text-slate-400 truncate">{s.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    {/* Matricule */}
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded whitespace-nowrap">
+                        {s.studentId || '—'}
+                      </span>
+                    </td>
+                    {/* Contact */}
+                    <td className="px-4 py-3">
+                      {s.phone
+                        ? <p className="text-slate-700 text-xs">{s.phone}</p>
+                        : <span className="text-slate-300 text-xs">—</span>
+                      }
+                    </td>
+                    {/* Filière & Niveau */}
+                    <td className="px-4 py-3">
+                      <p className="text-slate-700 font-medium text-xs leading-snug">{s.program?.name || '—'}</p>
+                      <span className="mt-1 inline-block text-xs font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                        {s.level}
+                      </span>
+                    </td>
+                    {/* Année acad. */}
+                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                      {s.academicYear || '—'}
+                    </td>
+                    {/* Statut */}
+                    <td className="px-4 py-3">
+                      <StatusBadge status={s.status} />
+                    </td>
+                    {/* Inscrit le */}
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                      {fmtDate(s.enrollmentDate || s.createdAt)}
+                    </td>
+                    {/* Actions */}
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openView(s)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          title="Voir le profil"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => openEdit(s)}
+                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          title="Modifier"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={e => handleDelete(s, e)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Désactiver"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-      {/* Modal Détails */}
-      <Modal
-        isOpen={viewModal.open}
-        onClose={() => setViewModal({ open: false, student: null })}
-        title="👤 Détails de l'étudiant"
-        size="lg"
-      >
-        {viewModal.student && <StudentDetails student={viewModal.student} />}
-      </Modal>
+      {/* ── Grid view ────────────────────────────────────────────────────────── */}
+      {!error && viewMode === 'grid' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {loading
+            ? Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 animate-pulse">
+                  <div className="w-16 h-16 rounded-full bg-slate-200 mx-auto mb-3" />
+                  <div className="h-4 bg-slate-200 rounded mb-2 w-3/4 mx-auto" />
+                  <div className="h-3 bg-slate-100 rounded w-1/2 mx-auto" />
+                </div>
+              ))
+            : students.map(s => (
+                <div
+                  key={s._id}
+                  className="bg-white rounded-xl border border-slate-200 shadow-card p-5 flex flex-col items-center gap-3 hover:shadow-card-md transition-shadow cursor-pointer"
+                  onClick={() => openView(s)}
+                >
+                  <Avatar student={s} size={64} />
+                  <div className="text-center">
+                    <p className="font-semibold text-slate-800">{s.firstName} {s.lastName}</p>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">{s.studentId || '—'}</p>
+                  </div>
+                  <StatusBadge status={s.status} />
+                  <div className="text-xs text-slate-500 text-center leading-relaxed">
+                    <p className="font-medium text-slate-700">{s.program?.name || '—'}</p>
+                    <p className="text-indigo-600 font-semibold mt-0.5">{s.level} · {s.academicYear}</p>
+                  </div>
+                  <div
+                    className="flex gap-2 pt-2 border-t border-slate-100 w-full"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => openEdit(s)}
+                      className="flex-1 py-1.5 text-xs font-medium text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                    >
+                      Modifier
+                    </button>
+                    <button
+                      onClick={() => openView(s)}
+                      className="flex-1 py-1.5 text-xs font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                    >
+                      Profil
+                    </button>
+                  </div>
+                </div>
+              ))
+          }
+        </div>
+      )}
 
-      {/* Confirmation désactivation */}
-      <ConfirmDialog
-        isOpen={deleteDialog.open}
-        onClose={() => setDeleteDialog({ open: false, student: null })}
-        onConfirm={handleDelete}
-        loading={deleting}
-        variant="danger"
-        confirmLabel="Désactiver"
-        title="Désactiver l'étudiant"
-        message={`Êtes-vous sûr de vouloir désactiver ${deleteDialog.student?.firstName} ${deleteDialog.student?.lastName} ?`}
-      />
+      {/* ── Pagination ───────────────────────────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 shadow-card px-5 py-3">
+          <p className="text-sm text-slate-500">
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} sur {total}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-2 text-slate-500 hover:text-slate-700 disabled:opacity-30 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                    p === page ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-2 text-slate-500 hover:text-slate-700 disabled:opacity-30 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL : Vue détail
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {modal?.mode === 'view' && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 pt-10 overflow-y-auto"
+          onClick={closeModal}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-scale-in mb-8"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Banner */}
+            <div className="relative bg-gradient-to-br from-indigo-600 to-violet-600 rounded-t-2xl p-6">
+              <button
+                onClick={closeModal}
+                className="absolute top-4 right-4 text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-4">
+                <div className="ring-4 ring-white/30 rounded-full">
+                  <Avatar student={modal.student} size={72} />
+                </div>
+                <div className="text-white">
+                  <h2 className="text-xl font-bold">{modal.student.firstName} {modal.student.lastName}</h2>
+                  <p className="text-indigo-200 font-mono text-sm mt-0.5">{modal.student.studentId || 'Matricule non défini'}</p>
+                  <div className="mt-2.5">
+                    <StatusBadge status={modal.student.status} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="border-b border-slate-100 px-6">
+              <div className="flex gap-1">
+                {[['profil','Profil'], ['dossier','Dossier académique'], ['famille','Famille']].map(([k, l]) => (
+                  <button
+                    key={k}
+                    onClick={() => setViewTab(k)}
+                    className={`px-4 py-3.5 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === k
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6">
+              {viewTab === 'profil' && (
+                <div className="grid grid-cols-2 gap-5">
+                  <InfoRow icon={Mail}     label="Email"         value={modal.student.email} />
+                  <InfoRow icon={Phone}    label="Téléphone"     value={modal.student.phone} />
+                  <InfoRow icon={Calendar} label="Date naissance" value={fmtDate(modal.student.dateOfBirth)} />
+                  <InfoRow icon={MapPin}   label="Lieu naissance" value={modal.student.placeOfBirth} />
+                  <InfoRow icon={Globe}    label="Nationalité"   value={modal.student.nationality} />
+                  <InfoRow icon={MapPin}   label="Ville"         value={modal.student.address?.city} />
+                  <InfoRow icon={MapPin}   label="Wilaya"        value={modal.student.address?.wilaya} />
+                  <InfoRow icon={MapPin}   label="Adresse"       value={modal.student.address?.street} span2 />
+                </div>
+              )}
+
+              {viewTab === 'dossier' && (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 gap-5">
+                    <InfoRow icon={BookOpen}      label="Filière / Programme" value={modal.student.program?.name} />
+                    <InfoRow icon={FileText}      label="Code filière"        value={modal.student.program?.code} />
+                    <InfoRow icon={GraduationCap} label="Niveau"              value={modal.student.level} />
+                    <InfoRow icon={Hash}          label="Semestre"            value={modal.student.currentSemester} />
+                    <InfoRow icon={Calendar}      label="Année académique"    value={modal.student.academicYear} />
+                    <InfoRow icon={Calendar}      label="Date d'inscription"  value={fmtDate(modal.student.enrollmentDate || modal.student.createdAt)} />
+                  </div>
+                  {modal.student.notes && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                      <p className="text-xs font-medium text-slate-500 mb-1.5">Notes / Observations</p>
+                      <p className="text-sm text-slate-700 leading-relaxed">{modal.student.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {viewTab === 'famille' && (
+                <div className="grid grid-cols-2 gap-5">
+                  <InfoRow icon={User}           label="Tuteur / Parent"  value={modal.student.guardian?.name} />
+                  <InfoRow icon={HeartHandshake} label="Relation"         value={modal.student.guardian?.relation} />
+                  <InfoRow icon={Phone}          label="Tél. tuteur"      value={modal.student.guardian?.phone} />
+                  <InfoRow icon={Mail}           label="Email tuteur"     value={modal.student.guardian?.email} />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 pb-6 border-t border-slate-100 pt-4">
+              <button onClick={closeModal} className="btn-secondary">Fermer</button>
+              <button
+                onClick={() => { closeModal(); setTimeout(() => openEdit(modal.student), 50); }}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Edit2 className="w-4 h-4" />Modifier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL : Formulaire création / édition
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {modal?.mode === 'form' && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 pt-8 overflow-y-auto"
+          onClick={closeModal}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-scale-in mb-8"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800">
+                {modal.student ? `Modifier — ${modal.student.firstName} ${modal.student.lastName}` : 'Nouvel étudiant'}
+              </h2>
+              <button onClick={closeModal} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tab bar */}
+            <div className="flex gap-1 px-6 border-b border-slate-100">
+              {[['identite','Identité'], ['scolarite','Scolarité'], ['famille','Famille']].map(([k, l]) => (
+                <button
+                  key={k}
+                  onClick={() => setFormTab(k)}
+                  className={`px-4 py-3.5 text-sm font-medium border-b-2 transition-colors ${
+                    formTab === k
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+
+              {/* ── TAB: Identité ────────────────────────────────────────────── */}
+              {formTab === 'identite' && (
+                <>
+                  {/* Photo upload */}
+                  <div className="flex flex-col items-center gap-2 pb-4 border-b border-slate-100">
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={onPhotoChange}
+                    />
+                    <div
+                      className="relative cursor-pointer group"
+                      onClick={() => photoInputRef.current?.click()}
+                      title="Cliquer pour changer la photo"
+                    >
+                      {photoPreview ? (
+                        <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-indigo-100 ring-offset-2">
+                          <img src={photoPreview} alt="Aperçu" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center ring-4 ring-slate-200 ring-offset-2">
+                          <User className="w-10 h-10 text-slate-300" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 rounded-full bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Camera className="w-6 h-6 text-white" />
+                        <span className="text-white text-[10px] font-medium mt-1">Changer</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {photoFile ? (
+                        <span className="text-indigo-600 font-medium">{photoFile.name}</span>
+                      ) : 'Cliquer pour ajouter une photo (JPG/PNG, max 2 Mo)'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Prénom *"        value={form.firstName}        onChange={v => setField('firstName', v)}        placeholder="Bilal" />
+                    <Field label="Nom *"           value={form.lastName}         onChange={v => setField('lastName', v)}         placeholder="Ouartsi" />
+                    <Field label="Email *"         value={form.email}            onChange={v => setField('email', v)}            placeholder="etud@example.com" type="email" disabled={!!modal.student} />
+                    <Field label="Téléphone"       value={form.phone}            onChange={v => setField('phone', v)}            placeholder="+213 5XX XX XX XX" />
+                    <Field label="Date naissance"  value={form.dateOfBirth}      onChange={v => setField('dateOfBirth', v)}      type="date" />
+                    <Field label="Lieu naissance"  value={form.placeOfBirth}     onChange={v => setField('placeOfBirth', v)}     placeholder="Alger" />
+                    <Field label="Nationalité"     value={form.nationality}      onChange={v => setField('nationality', v)}      placeholder="Algérienne" />
+                    <Field label="Ville"           value={form.address.city}     onChange={v => setField('address.city', v)}    placeholder="Alger" />
+                    <Field label="Wilaya"          value={form.address.wilaya}   onChange={v => setField('address.wilaya', v)}  placeholder="Wilaya" />
+                    <Field label="Code postal"     value={form.address.postalCode} onChange={v => setField('address.postalCode', v)} placeholder="16000" />
+                    <div className="col-span-2">
+                      <Field label="Adresse complète" value={form.address.street} onChange={v => setField('address.street', v)} placeholder="N° et nom de rue, quartier…" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── TAB: Scolarité ───────────────────────────────────────────── */}
+              {formTab === 'scolarite' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Filière / Programme *</label>
+                    <select
+                      value={form.program}
+                      onChange={e => setField('program', e.target.value)}
+                      className="input-field w-full"
+                    >
+                      <option value="">— Sélectionner une filière —</option>
+                      {programs.map(p => (
+                        <option key={p._id} value={p._id}>
+                          {p.name}{p.code ? ` (${p.code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Niveau *</label>
+                    <select value={form.level} onChange={e => setField('level', e.target.value)} className="input-field w-full">
+                      {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Semestre actuel *</label>
+                    <select value={form.currentSemester} onChange={e => setField('currentSemester', e.target.value)} className="input-field w-full">
+                      {SEMESTERS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+
+                  <Field label="Année académique *" value={form.academicYear} onChange={v => setField('academicYear', v)} placeholder="2024-2025" />
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Statut</label>
+                    <select value={form.status} onChange={e => setField('status', e.target.value)} className="input-field w-full">
+                      {Object.entries(STATUS_CFG).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Notes / Observations</label>
+                    <textarea
+                      value={form.notes}
+                      onChange={e => setField('notes', e.target.value)}
+                      rows={3}
+                      placeholder="Observations sur le dossier académique, motifs de suspension, etc."
+                      className="input-field w-full resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* ── TAB: Famille ─────────────────────────────────────────────── */}
+              {formTab === 'famille' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 flex items-center gap-2 pb-2 border-b border-slate-100">
+                    <HeartHandshake className="w-4 h-4 text-indigo-500" />
+                    <p className="text-sm font-semibold text-slate-700">Tuteur / Parent responsable</p>
+                  </div>
+
+                  <Field label="Nom complet du tuteur" value={form.guardian.name} onChange={v => setField('guardian.name', v)} placeholder="Prénom Nom" />
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Relation avec l'étudiant</label>
+                    <select
+                      value={form.guardian.relation}
+                      onChange={e => setField('guardian.relation', e.target.value)}
+                      className="input-field w-full"
+                    >
+                      <option value="">— Sélectionner —</option>
+                      {['Père','Mère','Frère','Sœur','Oncle','Tante','Tuteur légal','Autre'].map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <Field label="Téléphone" value={form.guardian.phone} onChange={v => setField('guardian.phone', v)} placeholder="+213 5XX XX XX XX" />
+                  <Field label="Email" value={form.guardian.email} onChange={v => setField('guardian.email', v)} placeholder="parent@example.com" type="email" />
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 pb-6 pt-4 border-t border-slate-100">
+              <div>
+                {formTab !== 'identite' && (
+                  <button
+                    onClick={() => setFormTab(formTab === 'famille' ? 'scolarite' : 'identite')}
+                    className="btn-secondary"
+                  >
+                    ← Précédent
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={closeModal} className="btn-secondary">Annuler</button>
+                {formTab !== 'famille' ? (
+                  <button
+                    onClick={() => setFormTab(formTab === 'identite' ? 'scolarite' : 'famille')}
+                    className="btn-primary"
+                  >
+                    Suivant →
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || photoUploading}
+                    className="btn-primary flex items-center gap-2 min-w-[130px] justify-center"
+                  >
+                    {saving || photoUploading
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <CheckCircle className="w-4 h-4" />}
+                    {saving ? 'Enregistrement…' : photoUploading ? 'Upload photo…' : 'Enregistrer'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

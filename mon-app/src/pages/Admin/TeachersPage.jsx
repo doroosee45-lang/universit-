@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { teacherAPI } from '../../services/services';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { teacherAPI, courseAPI } from '../../services/services';
+
+const PHOTO_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace('/api', '');
 
 // ─── Palette & tokens ────────────────────────────────────────────────────────
 const C = {
@@ -50,19 +52,21 @@ function useToast() {
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
-function Avatar({ firstName = '', lastName = '', photo, size = 'sm' }) {
-  const dim = size === 'xl' ? 56 : size === 'lg' ? 44 : size === 'md' ? 36 : 30;
-  const fs = size === 'xl' ? 20 : size === 'lg' ? 16 : size === 'md' ? 13 : 11;
+function Avatar({ firstName = '', lastName = '', photo, size = 'sm', previewUrl }) {
+  const dim = size === 'xl' ? 72 : size === 'lg' ? 44 : size === 'md' ? 36 : 30;
+  const fs  = size === 'xl' ? 24 : size === 'lg' ? 16 : size === 'md' ? 13 : 11;
   const initials = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
   const hue = ((firstName + lastName).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 36) * 10;
-  return photo
-    ? <img src={photo} alt="" style={{ width: dim, height: dim, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+  // previewUrl (blob) > backend path > initials
+  const src = previewUrl || (photo ? `${PHOTO_BASE}${photo}` : null);
+  return src
+    ? <img src={src} alt={initials} style={{ width: dim, height: dim, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
     : (
       <div style={{
         width: dim, height: dim, borderRadius: '50%', flexShrink: 0,
         background: `hsl(${hue},60%,88%)`, color: `hsl(${hue},60%,35%)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontWeight: 700, fontSize: fs, fontFamily: 'inherit',
+        fontWeight: 700, fontSize: fs, fontFamily: 'inherit', userSelect: 'none',
       }}>{initials || '?'}</div>
     );
 }
@@ -199,8 +203,17 @@ const CONTRACT_OPTIONS = [
   { value: 'vacataire', label: 'Vacataire' },
 ];
 
+// ── Badge type cours ──────────────────────────────────────────────────────────
+const TYPE_COLORS = {
+  CM: { bg: '#EFF6FF', color: '#2563EB' },
+  TD: { bg: '#F0FDF4', color: '#16A34A' },
+  TP: { bg: '#FFF7ED', color: '#EA580C' },
+};
+
 // ─── Teacher Form ─────────────────────────────────────────────────────────────
 function TeacherForm({ teacher, onSave, onCancel }) {
+  const [activeTab, setActiveTab] = useState(0); // 0=Infos, 1=Cours
+
   const [form, setForm] = useState(teacher ? {
     ...teacher,
     specialties: Array.isArray(teacher.specialties) ? teacher.specialties.join(', ') : (teacher.specialties || ''),
@@ -209,22 +222,91 @@ function TeacherForm({ teacher, onSave, onCancel }) {
     department: '', title: 'Maître Assistant A', contractType: 'permanent',
     specialties: '', office: '', password: '',
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
+  const [photoFile,    setPhotoFile]    = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const photoRef = useRef(null);
+
+  // ── Course state ──
+  const [allCourses,       setAllCourses]       = useState([]);
+  const [selectedCourses,  setSelectedCourses]  = useState(
+    new Set((teacher?.courses || []).map(c => (typeof c === 'object' ? c._id : c).toString()))
+  );
+  const [courseSearch, setCourseSearch] = useState('');
+  const [coursesLoading, setCoursesLoading] = useState(false);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Fetch all courses on mount
+  useEffect(() => {
+    setCoursesLoading(true);
+    courseAPI.getAll({ limit: 200 })
+      .then(r => setAllCourses(r.data || []))
+      .catch(() => {})
+      .finally(() => setCoursesLoading(false));
+  }, []);
+
+  const toggleCourse = (id) => {
+    setSelectedCourses(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const filteredCourses = allCourses.filter(c => {
+    const q = courseSearch.toLowerCase();
+    return !q || c.title?.toLowerCase().includes(q) || c.code?.toLowerCase().includes(q);
+  });
+
+  // Group filtered courses by type
+  const grouped = filteredCourses.reduce((acc, c) => {
+    const key = c.type || 'Autre';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(c);
+    return acc;
+  }, {});
+
+  const onPhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setError('La photo ne doit pas dépasser 2 Mo.'); return; }
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.firstName || !form.lastName) { setError('Prénom et nom requis.'); setActiveTab(0); return; }
+    if (!form.email)      { setError('Email requis.');      setActiveTab(0); return; }
+    if (!form.department) { setError('Département requis.'); setActiveTab(0); return; }
+
     setLoading(true);
     setError('');
     try {
       const data = {
         ...form,
         specialties: form.specialties ? form.specialties.split(',').map(s => s.trim()).filter(Boolean) : [],
+        courses: Array.from(selectedCourses),
       };
       if (!data.password) delete data.password;
-      if (teacher?._id) await teacherAPI.update(teacher._id, data);
-      else await teacherAPI.create(data);
+
+      let teacherId = teacher?._id;
+      if (teacher?._id) {
+        await teacherAPI.update(teacher._id, data);
+      } else {
+        const res = await teacherAPI.create(data);
+        teacherId = res.data?._id;
+      }
+
+      if (photoFile && teacherId) {
+        const fd = new FormData();
+        fd.append('photo', photoFile);
+        try { await teacherAPI.uploadPhoto(teacherId, fd); } catch {}
+      }
+
       onSave();
     } catch (err) {
       setError(err.message || 'Une erreur est survenue');
@@ -234,33 +316,202 @@ function TeacherForm({ teacher, onSave, onCancel }) {
   };
 
   const field = (label, key, type = 'text', extra = {}) => (
-    <Input label={label} type={type} value={form[key]} onChange={e => set(key, e.target.value)} {...extra} />
+    <Input label={label} type={type} value={form[key] ?? ''} onChange={e => set(key, e.target.value)} {...extra} />
   );
+
+  const tabStyle = (active) => ({
+    padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    border: 'none', background: 'none', fontFamily: 'inherit',
+    borderBottom: `2px solid ${active ? C.primary : 'transparent'}`,
+    color: active ? C.primary : C.gray500,
+    transition: 'all .15s',
+  });
 
   return (
     <form onSubmit={handleSubmit}>
       {error && (
-        <div style={{ padding: '10px 14px', background: C.dangerLight, color: C.danger, borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+        <div style={{ padding: '10px 14px', background: C.dangerLight, color: C.danger, borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
           {error}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-        {field('Prénom', 'firstName', 'text', { required: true })}
-        {field('Nom', 'lastName', 'text', { required: true })}
+
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${C.gray200}`, marginBottom: 20, gap: 0 }}>
+        <button type="button" onClick={() => setActiveTab(0)} style={tabStyle(activeTab === 0)}>
+          Informations
+        </button>
+        <button type="button" onClick={() => setActiveTab(1)} style={tabStyle(activeTab === 1)}>
+          Cours assignés
+          {selectedCourses.size > 0 && (
+            <span style={{ marginLeft: 6, background: C.primary, color: C.white, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+              {selectedCourses.size}
+            </span>
+          )}
+        </button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {field('Email', 'email', 'email', { required: true })}
-        {field('Téléphone', 'phone')}
-        {field('Département', 'department', 'text', { required: true })}
-        <Select label="Titre" value={form.title} onChange={e => set('title', e.target.value)} options={TITLE_OPTIONS} />
-        <Select label="Type de contrat" value={form.contractType} onChange={e => set('contractType', e.target.value)} options={CONTRACT_OPTIONS} />
-        {field('Spécialités (séparées par virgule)', 'specialties', 'text', { placeholder: 'Informatique, IA, Réseaux' })}
-        {field('Bureau', 'office')}
-        {!teacher && field('Mot de passe (défaut : Enseignant@123)', 'password', 'password')}
-      </div>
+
+      {/* ══ TAB 0 : Informations ══════════════════════════════════════════════ */}
+      {activeTab === 0 && (
+        <>
+          {/* Photo upload */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.gray100}` }}>
+            <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onPhotoChange} />
+            <div
+              onClick={() => photoRef.current?.click()}
+              style={{ position: 'relative', cursor: 'pointer', borderRadius: '50%', overflow: 'hidden', width: 80, height: 80 }}
+              onMouseEnter={e => { e.currentTarget.querySelector('.cam-overlay').style.opacity = '1'; }}
+              onMouseLeave={e => { e.currentTarget.querySelector('.cam-overlay').style.opacity = '0'; }}
+            >
+              <Avatar
+                firstName={form.firstName} lastName={form.lastName}
+                photo={teacher?.profilePhoto} previewUrl={photoPreview} size="xl"
+              />
+              <div className="cam-overlay" style={{
+                position: 'absolute', inset: 0, background: 'rgba(0,0,0,.42)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                opacity: 0, transition: 'opacity .18s', borderRadius: '50%',
+              }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                <span style={{ color: 'white', fontSize: 10, marginTop: 3 }}>Changer</span>
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: C.gray400, margin: 0 }}>
+              {photoFile
+                ? <span style={{ color: C.primary, fontWeight: 600 }}>{photoFile.name}</span>
+                : 'Cliquer pour ajouter une photo (JPG/PNG, max 2 Mo)'}
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {field('Prénom *', 'firstName', 'text', { required: true })}
+            {field('Nom *', 'lastName', 'text', { required: true })}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {field('Email *', 'email', 'email', { required: true, disabled: !!teacher })}
+            {field('Téléphone', 'phone')}
+            {field('Département *', 'department', 'text', { required: true })}
+            <Select label="Titre" value={form.title} onChange={e => set('title', e.target.value)} options={TITLE_OPTIONS} />
+            <Select label="Type de contrat" value={form.contractType} onChange={e => set('contractType', e.target.value)} options={CONTRACT_OPTIONS} />
+            {field('Spécialités (séparées par virgule)', 'specialties', 'text', { placeholder: 'Informatique, IA, Réseaux' })}
+            {field('Bureau', 'office')}
+            {!teacher && field('Mot de passe (défaut : Enseignant@123)', 'password', 'password')}
+          </div>
+        </>
+      )}
+
+      {/* ══ TAB 1 : Cours ════════════════════════════════════════════════════ */}
+      {activeTab === 1 && (
+        <div>
+          {/* Search */}
+          <div style={{ position: 'relative', marginBottom: 14 }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.gray400, pointerEvents: 'none' }}>
+              <IconSearch />
+            </span>
+            <input
+              value={courseSearch}
+              onChange={e => setCourseSearch(e.target.value)}
+              placeholder="Rechercher un cours..."
+              style={{
+                width: '100%', padding: '8px 12px 8px 34px', borderRadius: 8,
+                border: `1px solid ${C.gray200}`, fontSize: 14, fontFamily: 'inherit',
+                outline: 'none', color: C.gray900, boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          {/* Summary */}
+          {selectedCourses.size > 0 && (
+            <div style={{ padding: '8px 12px', background: C.primaryLight, borderRadius: 8, fontSize: 12, color: C.primary, fontWeight: 600, marginBottom: 12 }}>
+              {selectedCourses.size} cours sélectionné{selectedCourses.size > 1 ? 's' : ''}
+              <button type="button" onClick={() => setSelectedCourses(new Set())}
+                style={{ float: 'right', background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: 11 }}>
+                Tout désélectionner
+              </button>
+            </div>
+          )}
+
+          {/* Course list */}
+          <div style={{ maxHeight: 340, overflowY: 'auto', border: `1px solid ${C.gray200}`, borderRadius: 10 }}>
+            {coursesLoading ? (
+              <div style={{ padding: 24, textAlign: 'center', color: C.gray400, fontSize: 13 }}>Chargement des cours…</div>
+            ) : filteredCourses.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: C.gray400, fontSize: 13 }}>Aucun cours disponible</div>
+            ) : (
+              Object.entries(grouped).map(([type, courses]) => (
+                <div key={type}>
+                  {/* Group header */}
+                  <div style={{
+                    padding: '7px 14px', fontSize: 10, fontWeight: 700, letterSpacing: '.08em',
+                    textTransform: 'uppercase', color: C.gray400,
+                    background: C.gray50, borderBottom: `1px solid ${C.gray100}`,
+                    position: 'sticky', top: 0,
+                  }}>
+                    {type} — {courses.length} cours
+                  </div>
+                  {courses.map((course, idx) => {
+                    const isSelected = selectedCourses.has(course._id);
+                    const tc = TYPE_COLORS[course.type] || { bg: C.gray100, color: C.gray500 };
+                    return (
+                      <label key={course._id} style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '10px 14px', cursor: 'pointer',
+                        background: isSelected ? '#F0F7FF' : C.white,
+                        borderBottom: idx < courses.length - 1 ? `1px solid ${C.gray100}` : 'none',
+                        transition: 'background .1s',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleCourse(course._id)}
+                          style={{ width: 15, height: 15, accentColor: C.primary, cursor: 'pointer', flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: C.gray900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {course.title}
+                          </div>
+                          <div style={{ fontSize: 11, color: C.gray400, marginTop: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{course.code}</span>
+                            <span>·</span>
+                            <span>{course.semester}</span>
+                            {course.academicYear && <><span>·</span><span>{course.academicYear}</span></>}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: tc.bg, color: tc.color, flexShrink: 0 }}>
+                          {course.type}
+                        </span>
+                        {isSelected && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2.5">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+          <p style={{ margin: '8px 0 0', fontSize: 11, color: C.gray400 }}>
+            {allCourses.length} cours disponibles dans la base
+          </p>
+        </div>
+      )}
+
+      {/* ── Footer ── */}
       <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
-        <Btn variant="secondary" onClick={onCancel} sx={{ flex: 1 }}>Annuler</Btn>
-        <Btn type="submit" loading={loading} sx={{ flex: 1 }}>{teacher ? 'Mettre à jour' : 'Créer'}</Btn>
+        <Btn variant="secondary" onClick={onCancel} style={{ flex: 1 }}>Annuler</Btn>
+        {activeTab === 0 ? (
+          <Btn type="button" onClick={() => setActiveTab(1)} style={{ flex: 1 }}>
+            Suivant : Cours →
+          </Btn>
+        ) : (
+          <Btn type="submit" loading={loading} style={{ flex: 1 }}>
+            {teacher ? 'Mettre à jour' : 'Créer l\'enseignant'}
+          </Btn>
+        )}
       </div>
     </form>
   );
@@ -338,7 +589,7 @@ export default function TeachersPage() {
     try {
       const res = await teacherAPI.getAll({ page: p, limit: LIMIT, search: q });
       setTeachers(res.data || res.teachers || []);
-      setTotal(res.total || 0);
+      setTotal(res.pagination?.total || res.total || 0);
     } catch (err) {
       toast(err.message || 'Erreur de chargement', 'error');
     } finally {
@@ -434,7 +685,7 @@ export default function TeachersPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: C.gray50, borderBottom: `1px solid ${C.gray200}` }}>
-                  {['Enseignant', 'Email', 'Département', 'Titre', 'Contrat', 'Cours', 'Actions'].map(h => (
+                  {['Enseignant', 'Contact', 'Département', 'Titre & Contrat', 'Spécialités', 'Cours', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: C.gray500, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -451,24 +702,72 @@ export default function TeachersPage() {
                       </tr>
                     )
                     : teachers.map(row => (
-                      <tr key={row._id} style={{ borderBottom: `1px solid ${C.gray100}`, transition: 'background .1s' }}>
+                      <tr key={row._id} style={{ borderBottom: `1px solid ${C.gray100}`, transition: 'background .1s', cursor: 'pointer' }}
+                        onClick={() => setViewModal({ open: true, teacher: row })}>
+
+                        {/* Enseignant + photo */}
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <Avatar firstName={row.firstName} lastName={row.lastName} photo={row.profilePhoto} size="sm" />
+                            <Avatar firstName={row.firstName} lastName={row.lastName} photo={row.profilePhoto} size="md" />
                             <div>
                               <div style={{ fontWeight: 600, fontSize: 13, color: C.gray900 }}>{row.firstName} {row.lastName}</div>
-                              <div style={{ fontSize: 11, color: C.gray400 }}>{row.employeeId || '—'}</div>
+                              <div style={{ fontSize: 11, color: C.gray400, fontFamily: 'monospace', marginTop: 1 }}>{row.employeeId || '—'}</div>
                             </div>
                           </div>
                         </td>
-                        <td style={{ padding: '12px 16px' }}><span style={{ fontSize: 12, color: C.gray600 }}>{row.email}</span></td>
-                        <td style={{ padding: '12px 16px' }}><span style={{ fontSize: 13 }}>{row.department}</span></td>
-                        <td style={{ padding: '12px 16px' }}><span style={{ fontSize: 12, color: C.gray600, maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.title}</span></td>
-                        <td style={{ padding: '12px 16px' }}><ContractBadge type={row.contractType} /></td>
+
+                        {/* Contact */}
                         <td style={{ padding: '12px 16px' }}>
-                          <span style={{ fontWeight: 700, color: C.primary, fontSize: 14 }}>{row.courses?.length || 0}</span>
+                          <div style={{ fontSize: 12, color: C.gray600 }}>{row.email}</div>
+                          {row.phone && <div style={{ fontSize: 11, color: C.gray400, marginTop: 2 }}>{row.phone}</div>}
                         </td>
+
+                        {/* Département */}
                         <td style={{ padding: '12px 16px' }}>
+                          <span style={{ fontSize: 13, color: C.gray700 }}>{row.department || '—'}</span>
+                        </td>
+
+                        {/* Titre & Contrat */}
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontSize: 12, color: C.gray700, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {row.title || '—'}
+                          </div>
+                          <div style={{ marginTop: 4 }}><ContractBadge type={row.contractType} /></div>
+                        </td>
+
+                        {/* Spécialités */}
+                        <td style={{ padding: '12px 16px', maxWidth: 180 }}>
+                          {row.specialties?.length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {row.specialties.slice(0, 2).map(s => (
+                                <Badge key={s} bg={C.primaryLight} color={C.primary}>{s}</Badge>
+                              ))}
+                              {row.specialties.length > 2 && (
+                                <Badge bg={C.gray100} color={C.gray500}>+{row.specialties.length - 2}</Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 12, color: C.gray300 }}>—</span>
+                          )}
+                        </td>
+
+                        {/* Cours */}
+                        <td style={{ padding: '12px 16px' }}>
+                          {row.courses?.length > 0 ? (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: C.primaryLight, color: C.primary,
+                              fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                            }}>
+                              {row.courses.length} cours
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 12, color: C.gray300 }}>Aucun</span>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: 4 }}>
                             {[
                               { icon: <IconEye />, color: C.gray500, action: () => setViewModal({ open: true, teacher: row }) },
@@ -503,24 +802,38 @@ export default function TeachersPage() {
       </Modal>
 
       {/* View Modal */}
-      <Modal open={viewModal.open} onClose={() => setViewModal({ open: false, teacher: null })} title="Profil enseignant" width={480}>
+      <Modal open={viewModal.open} onClose={() => setViewModal({ open: false, teacher: null })} title="Profil enseignant" width={520}>
         {viewModal.teacher && (() => {
           const t = viewModal.teacher;
           return (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 16, background: C.primaryLight, borderRadius: 12, marginBottom: 20 }}>
-                <Avatar firstName={t.firstName} lastName={t.lastName} photo={t.profilePhoto} size="xl" />
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 17, color: C.gray900 }}>{t.firstName} {t.lastName}</div>
-                  <div style={{ fontSize: 13, color: C.primary, fontWeight: 600 }}>{t.title}</div>
-                  <div style={{ fontSize: 12, color: C.gray500 }}>{t.department}</div>
+              {/* Banner */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 16, background: `linear-gradient(135deg, ${C.primaryLight}, #f5f3ff)`, borderRadius: 12, marginBottom: 20, border: `1px solid #e0e7ff` }}>
+                <div style={{ position: 'relative' }}>
+                  <Avatar firstName={t.firstName} lastName={t.lastName} photo={t.profilePhoto} size="xl" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: C.gray900 }}>{t.firstName} {t.lastName}</div>
+                  <div style={{ fontSize: 13, color: C.primary, fontWeight: 600, marginTop: 2 }}>{t.title || 'Enseignant'}</div>
+                  <div style={{ fontSize: 12, color: C.gray500, marginTop: 2 }}>{t.department}</div>
+                  {t.employeeId && (
+                    <div style={{ fontSize: 11, color: C.gray400, fontFamily: 'monospace', marginTop: 4, background: C.white, display: 'inline-block', padding: '2px 8px', borderRadius: 6, border: `1px solid ${C.gray200}` }}>
+                      {t.employeeId}
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <ContractBadge type={t.contractType} />
                 </div>
               </div>
+
+              {/* Info grid */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                 {[
-                  ['Email', t.email], ['Téléphone', t.phone || '—'],
-                  ['ID Employé', t.employeeId || '—'], ['Contrat', t.contractType],
-                  ['Bureau', t.office || '—'], ['Cours', `${t.courses?.length || 0} cours`],
+                  ['Email', t.email],
+                  ['Téléphone', t.phone || '—'],
+                  ['Bureau', t.office || '—'],
+                  ['Cours assignés', t.courses?.length > 0 ? `${t.courses.length} cours` : 'Aucun cours'],
                 ].map(([label, value]) => (
                   <div key={label} style={{ background: C.gray50, borderRadius: 10, padding: '10px 12px', border: `1px solid ${C.gray100}` }}>
                     <div style={{ fontSize: 11, color: C.gray400, marginBottom: 2 }}>{label}</div>
@@ -528,14 +841,32 @@ export default function TeachersPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Spécialités */}
               {t.specialties?.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 11, color: C.gray400, marginBottom: 8, fontWeight: 600, textTransform: 'uppercase' }}>Spécialités</div>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: C.gray400, marginBottom: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>Spécialités</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {t.specialties.map(s => <Badge key={s} bg={C.primaryLight} color={C.primary}>{s}</Badge>)}
                   </div>
                 </div>
               )}
+
+              {/* Bio */}
+              {t.bio && (
+                <div style={{ background: C.gray50, borderRadius: 10, padding: '12px 14px', border: `1px solid ${C.gray100}` }}>
+                  <div style={{ fontSize: 11, color: C.gray400, marginBottom: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>Biographie</div>
+                  <p style={{ margin: 0, fontSize: 13, color: C.gray600, lineHeight: 1.6 }}>{t.bio}</p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+                <Btn variant="secondary" onClick={() => setViewModal({ open: false, teacher: null })}>Fermer</Btn>
+                <Btn onClick={() => { setViewModal({ open: false, teacher: null }); setModal({ open: true, teacher: t }); }}>
+                  Modifier
+                </Btn>
+              </div>
             </div>
           );
         })()}

@@ -1,5 +1,6 @@
 const Teacher = require('../models/Teacher.model');
-const User = require('../models/User.model');
+const Course  = require('../models/Course.model');
+const User    = require('../models/User.model');
 const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
 const { getPagination, buildSearchFilter, generateTeacherId } = require('../utils/helpers');
 
@@ -48,13 +49,20 @@ const createTeacher = async (req, res, next) => {
   try {
     const count = await Teacher.countDocuments();
     const employeeId = generateTeacherId(new Date().getFullYear(), count + 1);
+    const { courses = [], ...rest } = req.body;
 
     const teacher = await Teacher.create({
-      ...req.body,
+      ...rest,
       role: 'teacher',
       employeeId,
-      password: req.body.password || 'Enseignant@123'
+      courses,
+      password: rest.password || 'Enseignant@123'
     });
+
+    // Sync Course.teacher pour chaque cours assigné
+    if (courses.length > 0) {
+      await Course.updateMany({ _id: { $in: courses } }, { teacher: teacher._id });
+    }
 
     return created(res, teacher, 'Enseignant créé avec succès.');
   } catch (err) {
@@ -69,8 +77,19 @@ const updateTeacher = async (req, res, next) => {
 
     const teacher = await Teacher.findByIdAndUpdate(req.params.id, req.body, {
       new: true, runValidators: true
-    });
+    }).populate('courses', 'title code type semester');
     if (!teacher) return notFound(res, 'Enseignant introuvable.');
+
+    // Sync Course.teacher quand le tableau courses est fourni
+    if (Array.isArray(req.body.courses)) {
+      if (req.body.courses.length > 0) {
+        await Course.updateMany(
+          { _id: { $in: req.body.courses } },
+          { teacher: teacher._id }
+        );
+      }
+    }
+
     return success(res, teacher, 'Enseignant mis à jour.');
   } catch (err) {
     next(err);
@@ -90,6 +109,23 @@ const deleteTeacher = async (req, res, next) => {
   }
 };
 
+// POST /api/teachers/:id/photo
+const uploadTeacherPhoto = async (req, res, next) => {
+  try {
+    if (!req.file) return badRequest(res, 'Aucun fichier uploadé.');
+    const photoUrl = `/uploads/profiles/${req.file.filename}`;
+    const teacher = await Teacher.findByIdAndUpdate(
+      req.params.id,
+      { profilePhoto: photoUrl },
+      { new: true }
+    ).select('-password');
+    if (!teacher) return notFound(res, 'Enseignant introuvable.');
+    return success(res, { profilePhoto: photoUrl, teacher }, 'Photo mise à jour.');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /api/teachers/me/courses (enseignant connecté)
 const getMyCourses = async (req, res, next) => {
   try {
@@ -102,4 +138,4 @@ const getMyCourses = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher, getMyCourses };
+module.exports = { getAllTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher, getMyCourses, uploadTeacherPhoto };

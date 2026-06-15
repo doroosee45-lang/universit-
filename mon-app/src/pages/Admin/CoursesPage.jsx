@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -205,18 +205,18 @@ function CourseForm({ course, programs, teachers, ues, onSave, onCancel, toast }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Titre du cours" value={form.title} onChange={e => set('title', e.target.value)} required />
         <Input label="Code" value={form.code} onChange={e => set('code', e.target.value.toUpperCase())} required placeholder="INF101-CM" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select label="Type"     value={form.type}     onChange={e => set('type', e.target.value)} options={typeOpts} />
         <Select label="Semestre" value={form.semester} onChange={e => set('semester', e.target.value)} options={semOpts} />
       </div>
       <Select label="Filière" value={form.program} onChange={e => { set('program', e.target.value); set('ue', ''); }} options={programOpts} required />
       <Select label="UE rattachée" value={form.ue} onChange={e => set('ue', e.target.value)} options={ueOpts} required />
       <Select label="Enseignant"   value={form.teacher} onChange={e => set('teacher', e.target.value)} options={teacherOpts} />
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Volume horaire (h)" type="number" value={form.totalHours}   onChange={e => set('totalHours',   +e.target.value)} />
         <Input label="Année académique"                 value={form.academicYear} onChange={e => set('academicYear',  e.target.value)} />
       </div>
@@ -362,7 +362,7 @@ export default function CoursesPage() {
           </div>
 
           {/* Cartes stats cliquables */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { label: 'Cours Magistraux',  type: 'CM', color: 'bg-blue-50   text-blue-700   border-blue-200',   icon: GraduationCap },
               { label: 'Travaux Dirigés',   type: 'TD', color: 'bg-green-50  text-green-700  border-green-200',  icon: BookOpen },

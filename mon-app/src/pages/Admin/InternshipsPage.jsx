@@ -1,4 +1,4 @@
-// pages/admin/InternshipsPage.jsx
+﻿// pages/admin/InternshipsPage.jsx
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, Building2, Eye, Calendar, User, Phone, Mail, MapPin, Briefcase } from 'lucide-react';
 import { internshipAPI } from '../../services/services';
@@ -45,8 +45,10 @@ const formatDate = (date) => {
 };
 
 const getCurrentAcademicYear = () => {
-  const y = new Date().getFullYear();
-  return `${y}-${y + 1}`;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  return m >= 9 ? (y + '-' + (y + 1)) : ((y - 1) + '-' + y);
 };
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
@@ -980,159 +982,3 @@ const styles = {
 
 
 
-
-
-
-
-// // pages/admin/InternshipsPage.jsx (corrigé, complet)
-// import { useState, useEffect, useCallback } from 'react';
-// import { Plus, Edit, Trash2, Building2, Eye, Calendar, User, Briefcase, X } from 'lucide-react';
-// import { internshipAPI } from '../../services/services';
-
-// // (tous les composants UI locaux identiques à ceux que vous avez déjà – je ne les recopie pas pour gagner de la place, mais ils sont présents dans votre code)
-
-// // ⚠️ Assurez-vous que les composants comme Card, Button, Modal, Table, Pagination, etc. sont définis dans le même fichier (vous les avez déjà dans votre code fourni). Je vais juste résumer la partie logique.
-
-// export default function InternshipsPage() {
-//   const { toast, ToastContainer } = useToast();
-//   const [tab, setTab] = useState('internships');
-//   const [internships, setInternships] = useState([]);
-//   const [companies, setCompanies] = useState([]);
-//   const [loading, setLoading] = useState(true);
-//   const [page, setPage] = useState(1);
-//   const [total, setTotal] = useState(0);
-//   const [limit] = useState(20);
-//   const [statusFilter, setStatusFilter] = useState('');
-//   const [internModal, setInternModal] = useState({ open: false, item: null });
-//   const [companyModal, setCompanyModal] = useState({ open: false, item: null });
-//   const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null, type: null });
-//   const [deleting, setDeleting] = useState(false);
-
-//   useEffect(() => { loadInternships(); }, [page, statusFilter]);
-//   useEffect(() => { loadCompanies(); }, []);
-
-//   const loadInternships = async () => {
-//     setLoading(true);
-//     try {
-//       const params = { page, limit };
-//       if (statusFilter) params.status = statusFilter;
-//       const res = await internshipAPI.getAll(params);
-//       setInternships(res.data?.data || res.data || []);
-//       setTotal(res.data?.total || res.total || 0);
-//     } catch (err) { toast('Erreur chargement stages', 'error'); }
-//     finally { setLoading(false); }
-//   };
-
-//   const loadCompanies = async () => {
-//     try {
-//       const res = await internshipAPI.getCompanies({ limit: 200 });
-//       setCompanies(res.data?.data || res.data || []);
-//     } catch (err) { toast('Erreur chargement entreprises', 'error'); }
-//   };
-
-//   const handleDelete = async () => {
-//     setDeleting(true);
-//     try {
-//       if (deleteDialog.type === 'internship') await internshipAPI.delete(deleteDialog.item._id);
-//       else await internshipAPI.deleteCompany(deleteDialog.item._id);
-//       if (deleteDialog.type === 'internship') loadInternships();
-//       else loadCompanies();
-//       toast('Suppression réussie');
-//       setDeleteDialog({ open: false, item: null, type: null });
-//     } catch (err) { toast(err.message, 'error'); }
-//     finally { setDeleting(false); }
-//   };
-
-//   // Colonnes (identique à votre code)
-//   // ... (les mêmes colonnes que vous avez déjà)
-
-//   return (
-//     <div style={styles.container}>
-//       <ToastContainer />
-//       {/* ... reste identique à votre code ... */}
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// // // pages/admin/InternshipsPage.jsx (corrigé, complet)
-// // import { useState, useEffect, useCallback } from 'react';
-// // import { Plus, Edit, Trash2, Building2, Eye, Calendar, User, Briefcase, X } from 'lucide-react';
-// // import { internshipAPI } from '../../services/services';
-
-// // // (tous les composants UI locaux identiques à ceux que vous avez déjà – je ne les recopie pas pour gagner de la place, mais ils sont présents dans votre code)
-
-// // // ⚠️ Assurez-vous que les composants comme Card, Button, Modal, Table, Pagination, etc. sont définis dans le même fichier (vous les avez déjà dans votre code fourni). Je vais juste résumer la partie logique.
-
-// // export default function InternshipsPage() {
-// //   const { toast, ToastContainer } = useToast();
-// //   const [tab, setTab] = useState('internships');
-// //   const [internships, setInternships] = useState([]);
-// //   const [companies, setCompanies] = useState([]);
-// //   const [loading, setLoading] = useState(true);
-// //   const [page, setPage] = useState(1);
-// //   const [total, setTotal] = useState(0);
-// //   const [limit] = useState(20);
-// //   const [statusFilter, setStatusFilter] = useState('');
-// //   const [internModal, setInternModal] = useState({ open: false, item: null });
-// //   const [companyModal, setCompanyModal] = useState({ open: false, item: null });
-// //   const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null, type: null });
-// //   const [deleting, setDeleting] = useState(false);
-
-// //   useEffect(() => { loadInternships(); }, [page, statusFilter]);
-// //   useEffect(() => { loadCompanies(); }, []);
-
-// //   const loadInternships = async () => {
-// //     setLoading(true);
-// //     try {
-// //       const params = { page, limit };
-// //       if (statusFilter) params.status = statusFilter;
-// //       const res = await internshipAPI.getAll(params);
-// //       setInternships(res.data?.data || res.data || []);
-// //       setTotal(res.data?.total || res.total || 0);
-// //     } catch (err) { toast('Erreur chargement stages', 'error'); }
-// //     finally { setLoading(false); }
-// //   };
-
-// //   const loadCompanies = async () => {
-// //     try {
-// //       const res = await internshipAPI.getCompanies({ limit: 200 });
-// //       setCompanies(res.data?.data || res.data || []);
-// //     } catch (err) { toast('Erreur chargement entreprises', 'error'); }
-// //   };
-
-// //   const handleDelete = async () => {
-// //     setDeleting(true);
-// //     try {
-// //       if (deleteDialog.type === 'internship') await internshipAPI.delete(deleteDialog.item._id);
-// //       else await internshipAPI.deleteCompany(deleteDialog.item._id);
-// //       if (deleteDialog.type === 'internship') loadInternships();
-// //       else loadCompanies();
-// //       toast('Suppression réussie');
-// //       setDeleteDialog({ open: false, item: null, type: null });
-// //     } catch (err) { toast(err.message, 'error'); }
-// //     finally { setDeleting(false); }
-// //   };
-
-// //   // Colonnes (identique à votre code)
-// //   // ... (les mêmes colonnes que vous avez déjà)
-
-// //   return (
-// //     <div style={styles.container}>
-// //       <ToastContainer />
-// //       {/* ... reste identique à votre code ... */}
-// //     </div>
-// //   );
-// // }

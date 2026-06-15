@@ -30,26 +30,27 @@ class ApiClient {
     }
 
     const res = await fetch(`${this.baseURL}${endpoint}`, config);
-
-    const contentType = res.headers.get('content-type');
-    if (!contentType?.includes('application/json')) {
-      throw new Error(`Erreur serveur ${res.status} — route introuvable ou non JSON`);
-    }
-
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Erreur API');
+
+    if (!res.ok) throw new Error(data.message || 'API error');
+
     return data;
   }
 
   get(endpoint, options = {}) {
     const rawParams = options?.params ?? options ?? {};
+
     const cleanParams = {};
     Object.entries(rawParams).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') cleanParams[k] = v;
+      if (v !== undefined && v !== null && v !== '') {
+        cleanParams[k] = v;
+      }
     });
+
     const qs = Object.keys(cleanParams).length
       ? `?${new URLSearchParams(cleanParams).toString()}`
       : '';
+
     return this.request(`${endpoint}${qs}`, { method: 'GET' });
   }
 
@@ -81,17 +82,16 @@ export const api = new ApiClient();
 // AUTH
 // ═══════════════════════════════════════════════════════════
 export const authAPI = {
-  register:            (data)            => api.post('/auth/register', data),
-  login:               (data)            => api.post('/auth/login', data),
-  getMe:               ()                => api.get('/auth/me'),
-  logout:              ()                => Promise.resolve(localStorage.removeItem('token')),
-  forgotPassword:      (email)           => api.post('/auth/forgot-password', { email }),
-  resetPassword:       (token, password) => api.post(`/auth/reset-password/${token}`, { password }),
-  verifyEmail:         (token)           => api.get(`/auth/verify-email/${token}`),
-  activateAccount:     (token)           => api.get(`/auth/activate-account/${token}`),
-  changePassword:      (data)            => api.put('/auth/change-password', data),
-  forceChangePassword: (newPassword)     => api.post('/auth/force-change-password', { newPassword }),
-  createUser:          (data)            => api.post('/auth/admin/create-user', data),
+  register:            (data)           => api.post('/auth/register', data),
+  login:               (data)           => api.post('/auth/login', data),
+  getMe:               ()               => api.get('/auth/me'),
+  logout:              ()               => Promise.resolve(localStorage.removeItem('token')),
+  forgotPassword:      (email)          => api.post('/auth/forgot-password', { email }),
+  resetPassword:       (token, password)=> api.post(`/auth/reset-password/${token}`, { password }),
+  verifyEmail:         (token)          => api.get(`/auth/verify-email/${token}`),
+  changePassword:      (data)           => api.put('/auth/change-password', data),
+  forceChangePassword: (newPassword)    => api.post('/auth/force-change-password', { newPassword }),
+  createUser:          (data)           => api.post('/auth/admin/create-user', data),
 };
 
 
@@ -109,15 +109,14 @@ export const dashboardAPI = {
 // STUDENTS
 // ═══════════════════════════════════════════════════════════
 export const studentAPI = {
-  getAll:       (params)   => api.get('/students', params),
-  getById:      (id)       => api.get(`/students/${id}`),
-  getMyProfile: ()         => api.get('/students/me/profile'),
-  create:       (data)     => api.post('/students', data),
-  update:       (id, data) => api.put(`/students/${id}`, data),
-  delete:       (id)       => api.delete(`/students/${id}`),
-  exportExcel:  ()         => `${API_BASE}/students/export/excel`,
-  importExcel:  (formData) => api.upload('/students/import/excel', formData),
-  uploadPhoto:  (id, formData) => api.upload(`/students/${id}/photo`, formData),
+  getAll:      (params)      => api.get('/students', params),
+  getById:     (id)          => api.get(`/students/${id}`),
+  getMyProfile:()            => api.get('/students/me/profile'),
+  create:      (data)        => api.post('/students', data),
+  update:      (id, data)    => api.put(`/students/${id}`, data),
+  delete:      (id)          => api.delete(`/students/${id}`),
+  exportExcel: ()            => `${API_BASE}/students/export/excel`,
+  importExcel: (formData)    => api.upload('/students/import/excel', formData),
 };
 
 
@@ -130,7 +129,6 @@ export const teacherAPI = {
   create:             (data)     => api.post('/teachers', data),
   update:             (id, data) => api.put(`/teachers/${id}`, data),
   delete:             (id)       => api.delete(`/teachers/${id}`),
-  uploadPhoto:        (id, fd)   => api.upload(`/teachers/${id}/photo`, fd),
   updateProfile:      (data)     => api.put('/teachers/profile', data),
   updateProfessional: (data)     => api.put('/teachers/professional', data),
   updateSettings:     (data)     => api.put('/teachers/settings', data),
@@ -153,7 +151,7 @@ export const staffAPI = {
 // USERS (admin)
 // ═══════════════════════════════════════════════════════════
 export const userAPI = {
-  getAll:        (params)   => api.get('/users', params),
+  getAll:        (params)   => api.get('/users', { params }),
   getById:       (id)       => api.get(`/users/${id}`),
   create:        (data)     => api.post('/users', data),
   update:        (id, data) => api.put(`/users/${id}`, data),
@@ -204,12 +202,12 @@ export const courseAPI = {
 // GRADES
 // ═══════════════════════════════════════════════════════════
 export const gradeAPI = {
-  getAll:               (params)            => api.get('/grades', params),
-  upsert:               (data)              => api.post('/grades', data),
-  bulkUpsert:           (data)              => api.post('/grades/bulk', data),
-  publish:              (data)              => api.post('/grades/publish', data),
-  getStudentTranscript: (studentId, params) => api.get(`/grades/student/${studentId}/transcript`, params),
-  addSession2:          (id, data)          => api.put(`/grades/${id}/session2`, data),
+  getAll:               (params)           => api.get('/grades', params),
+  upsert:               (data)             => api.post('/grades', data),
+  bulkUpsert:           (data)             => api.post('/grades/bulk', data),
+  publish:              (data)             => api.post('/grades/publish', data),
+  getStudentTranscript: (studentId, params)=> api.get(`/grades/student/${studentId}/transcript`, params),
+  addSession2:          (id, data)         => api.put(`/grades/${id}/session2`, data),
 };
 
 
@@ -239,7 +237,6 @@ export const examAPI = {
   delete:          (id)       => api.delete(`/exams/${id}`),
   getResults:      (id)       => api.get(`/exams/${id}/results`),
   publishResults:  (id)       => api.post(`/exams/${id}/publish`),
-  publishSchedule: (data)     => api.post('/exams/publish-schedule', data),
 };
 
 
@@ -255,32 +252,15 @@ export const deliberationAPI = {
 
 
 // ═══════════════════════════════════════════════════════════
-// JURY
-// ═══════════════════════════════════════════════════════════
-export const juryAPI = {
-  getMembers:    (params)       => api.get('/jury', params),
-  updateMembers: (data, params) => {
-    const qs = params
-      ? `?${new URLSearchParams(
-          Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
-        ).toString()}`
-      : '';
-    return api.request(`/jury${qs}`, { method: 'PUT', body: data });
-  },
-  inviteMembers: (data) => api.post('/jury/invite', data),
-};
-
-
-// ═══════════════════════════════════════════════════════════
 // FEES
 // ═══════════════════════════════════════════════════════════
 export const feeAPI = {
-  getAll:            (params)   => api.get('/fees', params),
-  create:            (data)     => api.post('/fees', data),
-  recordPayment:     (id, data) => api.post(`/fees/${id}/pay`, data),
-  getPaymentHistory: (id)       => api.get(`/fees/${id}/history`),
-  sendReminders:     ()         => api.post('/fees/reminders'),
-  getStats:          (params)   => api.get('/fees/stats', params),
+  getAll:          (params)   => api.get('/fees', params),
+  create:          (data)     => api.post('/fees', data),
+  recordPayment:   (id, data) => api.post(`/fees/${id}/pay`, data),
+  getPaymentHistory:(id)      => api.get(`/fees/${id}/history`),
+  sendReminders:   ()         => api.post('/fees/reminders'),
+  getStats:        (params)   => api.get('/fees/stats', params),
 };
 
 
@@ -296,15 +276,15 @@ export const paymentAPI = {
 // LIBRARY
 // ═══════════════════════════════════════════════════════════
 export const libraryAPI = {
-  getBooks:        (params)   => api.get('/library/books', params),
-  getBookById:     (id)       => api.get(`/library/books/${id}`),
-  createBook:      (data)     => api.post('/library/books', data),
-  updateBook:      (id, data) => api.put(`/library/books/${id}`, data),
-  deleteBook:      (id)       => api.delete(`/library/books/${id}`),
-  getActiveLoans:  ()         => api.get('/library/loans'),
-  getOverdueLoans: ()         => api.get('/library/loans/overdue'),
-  borrowBook:      (data)     => api.post('/library/loans/borrow', data),
-  returnBook:      (loanId)   => api.put(`/library/loans/${loanId}/return`),
+  getBooks:      (params)   => api.get('/library/books', params),
+  getBookById:   (id)       => api.get(`/library/books/${id}`),
+  createBook:    (data)     => api.post('/library/books', data),
+  updateBook:    (id, data) => api.put(`/library/books/${id}`, data),
+  deleteBook:    (id)       => api.delete(`/library/books/${id}`),
+  getActiveLoans:()         => api.get('/library/loans'),
+  getOverdueLoans:()        => api.get('/library/loans/overdue'),
+  borrowBook:    (data)     => api.post('/library/loans/borrow', data),
+  returnBook:    (loanId)   => api.put(`/library/loans/${loanId}/return`),
 };
 
 
@@ -327,12 +307,12 @@ export const internshipAPI = {
 // SCHEDULES
 // ═══════════════════════════════════════════════════════════
 export const scheduleAPI = {
-  getAll:             (params)    => api.get('/schedules', { params }),
-  getById:            (id)        => api.get(`/schedules/${id}`),
-  getTeacherSchedule: (teacherId) => api.get(`/schedules/teacher/${teacherId}`),
-  create:             (data)      => api.post('/schedules', data),
-  update:             (id, data)  => api.put(`/schedules/${id}`, data),
-  delete:             (id)        => api.delete(`/schedules/${id}`),
+  getAll:             (params)     => api.get('/schedules', params),
+  getById:            (id)         => api.get(`/schedules/${id}`),
+  getTeacherSchedule: (teacherId)  => api.get(`/schedules/teacher/${teacherId}`),
+  create:             (data)       => api.post('/schedules', data),
+  update:             (id, data)   => api.put(`/schedules/${id}`, data),
+  delete:             (id)         => api.delete(`/schedules/${id}`),
 };
 
 
@@ -352,14 +332,24 @@ export const roomAPI = {
 // ASSIGNMENTS
 // ═══════════════════════════════════════════════════════════
 export const assignmentAPI = {
-  getAll:                (params)               => api.get('/assignments', params),
-  create:                (data)                 => api.post('/assignments', data),
-  update:                (id, data)             => api.put(`/assignments/${id}`, data),
-  delete:                (id)                   => api.delete(`/assignments/${id}`),
-  getSubmissions:        (id)                   => api.get(`/assignments/${id}/submissions`),
-  getStudentAssignments: (page = 1, limit = 10) => api.get(`/assignments/student?page=${page}&limit=${limit}`),
-  submitAssignment:      (id, formData)         => api.upload(`/assignments/${id}/submit`, formData),
-  getSubmissionStatus:   (id)                   => api.get(`/assignments/${id}/submission/status`),
+  getAll:                (params)         => api.get('/assignments', params),
+  create:                (data)           => api.post('/assignments', data),
+  update:                (id, data)       => api.put(`/assignments/${id}`, data),
+  delete:                (id)             => api.delete(`/assignments/${id}`),
+  getSubmissions:        (id)             => api.get(`/assignments/${id}/submissions`),
+  getStudentAssignments: (page=1, limit=10) => api.get(`/assignments/student?page=${page}&limit=${limit}`),
+  submitAssignment:      (id, formData)   => api.upload(`/assignments/${id}/submit`, formData),
+  getSubmissionStatus:   (id)             => api.get(`/assignments/${id}/submission/status`),
+};
+
+
+// ═══════════════════════════════════════════════════════════
+// JURY
+// ═══════════════════════════════════════════════════════════
+export const juryAPI = {
+  getMembers:    (params)       => api.get('/jury', { params }),
+  updateMembers: (data, params) => api.put('/jury', data, { params }),
+  inviteMembers: (data)         => api.post('/jury/invite', data),
 };
 
 
@@ -367,11 +357,11 @@ export const assignmentAPI = {
 // NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════
 export const notificationAPI = {
-  getAll:         ()   => api.get('/notifications'),
-  getUnreadCount: ()   => api.get('/notifications/unread-count'),
-  markAsRead:     (id) => api.put(`/notifications/${id}/read`),
-  markAllAsRead:  ()   => api.put('/notifications/mark-all-read'),
-  delete:         (id) => api.delete(`/notifications/${id}`),
+  getAll:         () => api.get('/notifications'),
+  getUnreadCount: () => api.get('/notifications/unread-count'),
+  markAsRead:    (id) => api.put(`/notifications/${id}/read`),
+  markAllAsRead:  () => api.put('/notifications/mark-all-read'),
+  delete:        (id) => api.delete(`/notifications/${id}`),
 };
 
 
@@ -390,7 +380,7 @@ export const reportAPI = {
 // SETTINGS
 // ═══════════════════════════════════════════════════════════
 export const settingsAPI = {
-  get:                ()             => api.get('/settings'),
-  update:             (data)         => api.put('/settings', data),
-  updateAcademicYear: (academicYear) => api.put('/settings/academic-year', { academicYear }),
+  get:               ()             => api.get('/settings'),
+  update:            (data)         => api.put('/settings', data),
+  updateAcademicYear:(academicYear) => api.put('/settings/academic-year', { academicYear }),
 };

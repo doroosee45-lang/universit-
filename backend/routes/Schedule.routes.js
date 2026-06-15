@@ -7,11 +7,11 @@ const { authorize } = require('../middleware/Role.middleware');
 router.use(protect);
 
 router.get('/', ctrl.getAllSchedules);
-router.get('/:id', ctrl.getScheduleById);
 router.get('/teacher/:teacherId', ctrl.getTeacherSchedule);
-router.post('/', authorize('admin', 'staff'), ctrl.createSchedule);
-router.put('/:id', authorize('admin', 'staff'), ctrl.updateSchedule);
-router.delete('/:id', authorize('admin', 'staff'), ctrl.deleteSchedule);
+router.get('/:id', ctrl.getScheduleById);
+router.post('/', authorize('admin', 'super_admin', 'staff'), ctrl.createSchedule);
+router.put('/:id', authorize('admin', 'super_admin', 'staff'), ctrl.updateSchedule);
+router.delete('/:id', authorize('admin', 'super_admin', 'staff'), ctrl.deleteSchedule);
 
 module.exports = router;
 

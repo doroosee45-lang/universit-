@@ -62,10 +62,23 @@ const STATUS_CONFIG = {
   inactive: { label: 'Désactivé',  bg: '#F3F4F6', color: '#6B7280', dot: '#9CA3AF' },
 };
 
-const fmt = (n) =>
-  n !== undefined && n !== null
-    ? new Intl.NumberFormat('fr-DZ', { style: 'currency', currency: 'DZD' }).format(n)
-    : '—';
+const CURRENCIES = {
+  USD: { code: 'USD', symbol: '$',   locale: 'en-US', label: 'USD ($)'              },
+  CDF: { code: 'CDF', symbol: 'FC',  locale: 'fr-CD', label: 'CDF (Franc Congolais)' },
+};
+
+const fmt = (n, currency = 'USD') => {
+  if (n === undefined || n === null) return '—';
+  try {
+    return new Intl.NumberFormat(CURRENCIES[currency]?.locale || 'en-US', {
+      style: 'currency', currency,
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(n);
+  } catch {
+    const sym = CURRENCIES[currency]?.symbol || currency;
+    return `${sym} ${Number(n).toLocaleString()}`;
+  }
+};
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 
@@ -272,7 +285,7 @@ function ConfirmModal({ message, confirmLabel, confirmVariant = 'danger', onConf
 }
 
 // ─── Add Fee Modal ─────────────────────────────────────────────────────────────
-function AddFeeModal({ onSave, onCancel }) {
+function AddFeeModal({ onSave, onCancel, currency = 'USD' }) {
   const { toast, ToastEl } = useToast();
   const [loading, setLoading]       = useState(false);
   const [programs, setPrograms]     = useState([]);
@@ -335,7 +348,7 @@ function AddFeeModal({ onSave, onCancel }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Select label="Type de frais" value={form.feeType}
           onChange={e => set('feeType', e.target.value)} options={FEE_TYPES} />
-        <Input label="Montant (DA)" type="number" required value={form.amount}
+        <Input label={`Montant (${CURRENCIES[currency]?.symbol || currency})`} type="number" required value={form.amount}
           onChange={e => set('amount', e.target.value)} placeholder="0" />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -355,7 +368,7 @@ function AddFeeModal({ onSave, onCancel }) {
 }
 
 // ─── Bulk Add Fee Modal ────────────────────────────────────────────────────────
-function BulkAddFeeModal({ onSave, onCancel }) {
+function BulkAddFeeModal({ onSave, onCancel, currency = 'USD' }) {
   const { toast, ToastEl } = useToast();
   const [loading, setLoading]       = useState(false);
   const [programs, setPrograms]     = useState([]);
@@ -423,7 +436,7 @@ function BulkAddFeeModal({ onSave, onCancel }) {
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Select label="Type de frais" value={form.feeType} onChange={e => set('feeType', e.target.value)} options={FEE_TYPES} />
-        <Input label="Montant (DA)" type="number" required value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0" />
+        <Input label={`Montant (${CURRENCIES[currency]?.symbol || currency})`} type="number" required value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0" />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Input label="Année académique" value={form.academicYear} onChange={e => set('academicYear', e.target.value)} />
@@ -439,8 +452,9 @@ function BulkAddFeeModal({ onSave, onCancel }) {
 }
 
 // ─── Payment Modal ─────────────────────────────────────────────────────────────
-function PaymentModal({ fee, onSave, onCancel }) {
+function PaymentModal({ fee, onSave, onCancel, currency = 'USD' }) {
   const { toast, ToastEl } = useToast();
+  const fmtC = (n) => fmt(n, currency);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ amount: fee?.remainingAmount || '', method: 'cash', reference: '' });
 
@@ -448,7 +462,7 @@ function PaymentModal({ fee, onSave, onCancel }) {
     e.preventDefault();
     const a = Number(form.amount);
     if (!a || a <= 0) return toast('Montant invalide', 'error');
-    if (a > fee.remainingAmount) return toast(`Max : ${fmt(fee.remainingAmount)}`, 'error');
+    if (a > fee.remainingAmount) return toast(`Max : ${fmtC(fee.remainingAmount)}`, 'error');
     setLoading(true);
     try {
       await feeAPI.recordPayment(fee._id, { ...form, amount: a });
@@ -465,9 +479,9 @@ function PaymentModal({ fee, onSave, onCancel }) {
       {ToastEl}
       <div style={{ background: '#F9FAFB', borderRadius: 12, padding: 16, marginBottom: 20, border: '1px solid #E5E7EB' }}>
         {[
-          ['Total dû',   fmt(fee?.totalAmount),     '#111',     700],
-          ['Déjà payé',  fmt(fee?.paidAmount),      '#059669',  600],
-          ['Restant dû', fmt(fee?.remainingAmount), '#DC2626',  700],
+          ['Total dû',   fmtC(fee?.totalAmount),     '#111',     700],
+          ['Déjà payé',  fmtC(fee?.paidAmount),      '#059669',  600],
+          ['Restant dû', fmtC(fee?.remainingAmount), '#DC2626',  700],
         ].map(([l, v, c, w], i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: i === 2 ? '8px 0 0' : '0 0 8px', borderTop: i === 2 ? '1px solid #E5E7EB' : 'none' }}>
             <span style={{ fontSize: 13, color: '#6B7280' }}>{l}</span>
@@ -475,7 +489,7 @@ function PaymentModal({ fee, onSave, onCancel }) {
           </div>
         ))}
       </div>
-      <Input label="Montant à payer (DA)" type="number" required value={form.amount}
+      <Input label={`Montant à payer (${CURRENCIES[currency]?.symbol || currency})`} type="number" required value={form.amount}
         onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} max={fee?.remainingAmount} placeholder="0" />
       <Select label="Mode de paiement" value={form.method}
         onChange={e => setForm(f => ({ ...f, method: e.target.value }))} options={PAYMENT_METHODS} />
@@ -546,7 +560,8 @@ function ReminderModal({ onSave, onCancel }) {
 }
 
 // ─── Fee Card (Admin) ──────────────────────────────────────────────────────────
-function AdminFeeCard({ fee, onAction }) {
+function AdminFeeCard({ fee, onAction, currency = 'USD' }) {
+  const fmtC = (n) => fmt(n, currency);
   const [expanded, setExpanded] = useState(false);
   const cfg        = STATUS_CONFIG[fee.status] || STATUS_CONFIG.pending;
   const isInactive = fee.status === 'inactive';
@@ -588,7 +603,7 @@ function AdminFeeCard({ fee, onAction }) {
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
             <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Total dû</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: '#111' }}>{fmt(fee.totalAmount)}</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#111' }}>{fmtC(fee.totalAmount)}</div>
           </div>
         </div>
 
@@ -596,11 +611,11 @@ function AdminFeeCard({ fee, onAction }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
           <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '8px 12px' }}>
             <div style={{ fontSize: 10, color: '#6B7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Payé</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#059669' }}>{fmt(fee.paidAmount)}</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#059669' }}>{fmtC(fee.paidAmount)}</div>
           </div>
           <div style={{ background: fee.remainingAmount > 0 ? '#FEF2F2' : '#F0FDF4', borderRadius: 8, padding: '8px 12px' }}>
             <div style={{ fontSize: 10, color: '#6B7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Restant</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: fee.remainingAmount > 0 ? '#DC2626' : '#059669' }}>{fmt(fee.remainingAmount)}</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: fee.remainingAmount > 0 ? '#DC2626' : '#059669' }}>{fmtC(fee.remainingAmount)}</div>
           </div>
         </div>
 
@@ -700,7 +715,7 @@ function AdminFeeCard({ fee, onAction }) {
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 12, borderBottom: i < fee.items.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
               <span style={{ color: '#374151' }}>{item.label}</span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontWeight: 700 }}>{fmt(item.amount)}</span>
+                <span style={{ fontWeight: 700 }}>{fmtC(item.amount)}</span>
                 <span style={{
                   fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20,
                   background: item.isPaid ? '#D1FAE5' : '#FEF3C7',
@@ -720,6 +735,10 @@ function AdminFeeCard({ fee, onAction }) {
 // ─── Main Admin Page ───────────────────────────────────────────────────────────
 export default function FeesPage() {
   const { toast, ToastEl } = useToast();
+  const [currency, setCurrency] = useState(() => localStorage.getItem('fee_currency') || 'USD');
+  const fmtC = (n) => fmt(n, currency);
+  const changeCurrency = (c) => { setCurrency(c); localStorage.setItem('fee_currency', c); };
+
   const [fees,   setFees]   = useState([]);
   const [stats,  setStats]  = useState(null);
   const [loading, setLoading] = useState(true);
@@ -728,8 +747,13 @@ export default function FeesPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const LIMIT = 20;
 
-  const [filters, setFilters] = useState({ status: '', academicYear: ACADEMIC_YEAR(), search: '' });
-  const [modal,   setModal]   = useState(null);
+ const [filters, setFilters] = useState({
+    status: '',
+    academicYear: '',   // au lieu de ACADEMIC_YEAR()
+    search: ''
+  });
+
+  const [modal, setModal] = useState(null);
 
   const loadFees = useCallback(async () => {
     setLoading(true);
@@ -801,7 +825,20 @@ export default function FeesPage() {
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111', margin: 0 }}>💰 Frais de Scolarité</h1>
           <p style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>Gestion des paiements — {ACADEMIC_YEAR()}</p>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Sélecteur devise */}
+          <div style={{ display: 'flex', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+            {Object.entries(CURRENCIES).map(([code, cfg]) => (
+              <button key={code} onClick={() => changeCurrency(code)} style={{
+                padding: '6px 14px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                background: currency === code ? '#4F46E5' : '#fff',
+                color: currency === code ? '#fff' : '#6B7280',
+                transition: 'all .15s',
+              }}>
+                {cfg.symbol}
+              </button>
+            ))}
+          </div>
           <Btn variant="warning" size="sm" onClick={() => setModal('reminder')}>
             <Mail size={14} /> Rappels
           </Btn>
@@ -816,9 +853,9 @@ export default function FeesPage() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Total attendu" value={fmt(totals.totalRevenue)}   icon={<Wallet size={20} />}     bg="#EEF2FF" iconColor="#4338CA" />
-        <StatCard title="Collecté"      value={fmt(totals.totalCollected)} icon={<TrendingUp size={20} />} bg="#D1FAE5" iconColor="#065F46" />
-        <StatCard title="En attente"    value={fmt(totals.totalPending)}   icon={<Clock size={20} />}      bg="#FEF3C7" iconColor="#92400E" />
+        <StatCard title="Total attendu" value={fmtC(totals.totalRevenue)}   icon={<Wallet size={20} />}     bg="#EEF2FF" iconColor="#4338CA" />
+        <StatCard title="Collecté"      value={fmtC(totals.totalCollected)} icon={<TrendingUp size={20} />} bg="#D1FAE5" iconColor="#065F46" />
+        <StatCard title="En attente"    value={fmtC(totals.totalPending)}   icon={<Clock size={20} />}      bg="#FEF3C7" iconColor="#92400E" />
       </div>
 
       {/* Barre de recouvrement */}
@@ -890,7 +927,7 @@ export default function FeesPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 14 }}>
           {fees.map(fee => (
-            <AdminFeeCard key={fee._id} fee={fee} onAction={handleAction} />
+            <AdminFeeCard key={fee._id} fee={fee} onAction={handleAction} currency={currency} />
           ))}
         </div>
       )}
@@ -906,11 +943,11 @@ export default function FeesPage() {
 
       {/* ── Modals ── */}
       <Modal isOpen={modal === 'add'} onClose={() => setModal(null)} title="Nouveau frais">
-        <AddFeeModal onSave={() => { setModal(null); loadFees(); loadStats(); toast('Frais ajouté !'); }} onCancel={() => setModal(null)} />
+        <AddFeeModal currency={currency} onSave={() => { setModal(null); loadFees(); loadStats(); toast('Frais ajouté !'); }} onCancel={() => setModal(null)} />
       </Modal>
 
       <Modal isOpen={modal === 'bulk'} onClose={() => setModal(null)} title="Ajout en masse">
-        <BulkAddFeeModal
+        <BulkAddFeeModal currency={currency}
           onSave={(d) => { setModal(null); loadFees(); loadStats(); toast(d ? `${d.created} créée(s), ${d.skipped} ignorée(s)` : 'Frais ajoutés !'); }}
           onCancel={() => setModal(null)} />
       </Modal>
@@ -921,7 +958,7 @@ export default function FeesPage() {
 
       <Modal isOpen={modal?.type === 'pay'} onClose={() => setModal(null)} title="Enregistrer un paiement" size="sm">
         {modal?.fee && (
-          <PaymentModal fee={modal.fee}
+          <PaymentModal fee={modal.fee} currency={currency}
             onSave={() => { setModal(null); loadFees(); loadStats(); toast('Paiement enregistré !'); }}
             onCancel={() => setModal(null)} />
         )}

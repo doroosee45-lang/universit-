@@ -1,349 +1,691 @@
 // // controller/Dashboard.controller.js
 
-// // ==================== DASHBOARD ADMIN ====================
-// const getAdminDashboard = async (req, res) => {
+// const User       = require('../models/User.model');
+// const Course     = require('../models/Course.model');
+// const Enrollment = require('../models/Enrollment.model');
+// const Grade      = require('../models/Grade.model');
+// const Attendance = require('../models/Attendance.model');
+// const Deliberation = require('../models/Deliberation');
+// const Fee        = require('../models/Fee.model');
+// const Program    = require('../models/Program.model');
+
+// // ─────────────────────────────────────────────────────────────
+// // Helper : année académique courante  ex: "2024-2025"
+// // ─────────────────────────────────────────────────────────────
+// const currentAcademicYear = () => {
+//   const y = new Date().getFullYear();
+//   return `${y}-${y + 1}`;
+// };
+
+// // ─────────────────────────────────────────────────────────────
+// // Helper : stats délibération
+// // ─────────────────────────────────────────────────────────────
+// const getDeliberationStats = async (academicYear) => {
+//   const filter = academicYear ? { academicYear } : {};
+//   const [deliberated, certified, total] = await Promise.all([
+//     Deliberation.countDocuments({ ...filter, validated: true }),
+//     Deliberation.countDocuments({ ...filter, certificateGenerated: true }),
+//     Deliberation.countDocuments(filter),
+//   ]);
+//   return { total, deliberated, certified, pending: total - deliberated };
+// };
+
+// // ═════════════════════════════════════════════════════════════
+// // 1. STATS GLOBALES  —  SuperAdmin
+// // ═════════════════════════════════════════════════════════════
+// exports.getOverallStats = async (req, res) => {
 //   try {
-//     res.status(200).json({
+//     const academicYear = currentAcademicYear();
+
+//     const [
+//       totalStudents,
+//       totalTeachers,
+//       totalStaff,
+//       totalCourses,
+//       totalPrograms,
+//       totalEnrollments,
+//       avgAttendanceResult,
+//       avgGradeResult,
+//       deliberationStats,
+//     ] = await Promise.all([
+//       User.countDocuments({ role: 'student' }),
+//       User.countDocuments({ role: 'teacher' }),
+//       User.countDocuments({ role: 'staff' }),
+//       Course.countDocuments(),
+//       Program.countDocuments({ isActive: true }),
+//       Enrollment.countDocuments(),
+//       // Attendance n'a pas de champ 'percentage' → on calcule le taux présent/total
+//       Attendance.aggregate([
+//         {
+//           $group: {
+//             _id: null,
+//             total:   { $sum: 1 },
+//             present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+//           },
+//         },
+//         { $project: { rate: { $multiply: [{ $divide: ['$present', '$total'] }, 100] } } },
+//       ]),
+//       Grade.aggregate([
+//         { $match: { finalAverage: { $gt: 0 } } },
+//         { $group: { _id: null, avg: { $avg: '$finalAverage' } } },
+//       ]),
+//       getDeliberationStats(academicYear),
+//     ]);
+
+//     res.json({
 //       success: true,
-//       role: "admin",
-//       message: "Bienvenue sur le Dashboard Administrateur",
 //       data: {
-//         totalStudents: 1243,
-//         totalTeachers: 87,
-//         totalCourses: 156,
-//         pendingPayments: 23,
-//         activePrograms: 12
-//       }
+//         users: {
+//           students: totalStudents,
+//           teachers: totalTeachers,
+//           staff:    totalStaff,
+//           total:    totalStudents + totalTeachers + totalStaff,
+//         },
+//         courses:     totalCourses,
+//         programs:    totalPrograms,
+//         enrollments: totalEnrollments,
+//         attendance:  { rate: Math.round(avgAttendanceResult[0]?.rate || 0) },
+//         grades:      { average: +(avgGradeResult[0]?.avg || 0).toFixed(2) },
+//         deliberation: deliberationStats,
+//       },
 //     });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//   } catch (err) {
+//     console.error('[getOverallStats]', err);
+//     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
 
-// // ==================== DASHBOARD ENSEIGNANT ====================
-// const getTeacherDashboard = async (req, res) => {
+// // ═════════════════════════════════════════════════════════════
+// // 2. DASHBOARD ADMIN  (+ super_admin redirigé ici via getUserDashboard)
+// // ═════════════════════════════════════════════════════════════
+// exports.getAdminDashboard = async (req, res) => {
 //   try {
-//     res.status(200).json({
+//     const academicYear = currentAcademicYear();
+
+//     const [
+//       totalStudents,
+//       totalTeachers,
+//       totalStaff,
+//       totalCourses,
+//       deliberationStats,
+//       // ✅ FIX : Enrollment ne contient PAS de champ 'course' → on populate uniquement 'student' et 'ue'
+//       recentEnrollments,
+//       // Frais impayés
+//       unpaidFees,
+//     ] = await Promise.all([
+//       User.countDocuments({ role: 'student' }),
+//       User.countDocuments({ role: 'teacher' }),
+//       User.countDocuments({ role: 'staff' }),
+//       Course.countDocuments(),
+//       getDeliberationStats(academicYear),
+//       Enrollment.find()
+//         .sort({ createdAt: -1 })
+//         .limit(5)
+//         .populate('student', 'firstName lastName email')   // ✅ champs limités
+//         .populate('ue',      'code title')                 // ✅ 'ue' existe dans Enrollment
+//         .populate('program', 'name code')
+//         .lean(),
+//       Fee.countDocuments({ status: { $in: ['pending', 'partial'] } }),
+//     ]);
+
+//     // Notes en attente : Grade n'a pas de champ 'status' → on compte les non validées
+//     const pendingGrades = await Grade.countDocuments({ isValidated: false });
+
+//     res.json({
 //       success: true,
-//       role: "teacher",
-//       message: "Bienvenue sur le Dashboard Enseignant",
 //       data: {
-//         myCourses: 5,
-//         totalStudents: 142,
-//         upcomingClasses: 8,
-//         averageAttendance: "89%"
-//       }
+//         students:          totalStudents,
+//         teachers:          totalTeachers,
+//         staff:             totalStaff,
+//         courses:           totalCourses,
+//         pendingGrades,
+//         unpaidFees,
+//         recentEnrollments,
+//         deliberation:      deliberationStats,
+//       },
 //     });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//   } catch (err) {
+//     console.error('[getAdminDashboard]', err);
+//     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
 
-// // ==================== DASHBOARD ÉTUDIANT ====================
-// const getStudentDashboard = async (req, res) => {
+// // ═════════════════════════════════════════════════════════════
+// // 3. DASHBOARD ENSEIGNANT
+// // ═════════════════════════════════════════════════════════════
+// exports.getTeacherDashboard = async (req, res) => {
 //   try {
-//     res.status(200).json({
+//     const teacherId = req.user._id;
+
+//     const myCourses = await Course.find({ teacher: teacherId })
+//       .populate('ue', 'code title credits')
+//       .lean();
+
+//     const courseIds = myCourses.map((c) => c._id);
+
+//     // Grade n'a pas de champ 'status' → notes non validées = isValidated: false
+//     const [pendingGrades, recentAbsences, totalEnrolled] = await Promise.all([
+//       Grade.countDocuments({ course: { $in: courseIds }, isValidated: false }),
+//       Attendance.find({ course: { $in: courseIds }, status: 'absent' })
+//         .sort({ date: -1 })
+//         .limit(5)
+//         .populate('student', 'firstName lastName studentId')
+//         .populate('course',  'code title')
+//         .lean(),
+//       Enrollment.countDocuments({ ue: { $in: myCourses.map((c) => c.ue?._id).filter(Boolean) } }),
+//     ]);
+
+//     res.json({
 //       success: true,
-//       role: "student",
-//       message: "Bienvenue sur le Dashboard Étudiant",
 //       data: {
-//         currentSemester: "S2",
-//         averageGrade: 14.5,
-//         coursesEnrolled: 6,
-//         attendanceRate: "92%",
-//         nextExamDate: "2026-05-15"
-//       }
+//         totalCourses:   myCourses.length,
+//         totalEnrolled,
+//         pendingGrades,
+//         recentAbsences,
+//         myCourses,
+//       },
 //     });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//   } catch (err) {
+//     console.error('[getTeacherDashboard]', err);
+//     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
 
-// // ==================== DASHBOARD STAFF ====================
-// const getStaffDashboard = async (req, res) => {
+// // ═════════════════════════════════════════════════════════════
+// // 4. DASHBOARD ÉTUDIANT
+// // ═════════════════════════════════════════════════════════════
+// exports.getStudentDashboard = async (req, res) => {
 //   try {
-//     res.status(200).json({
+//     const studentId = req.user._id;
+
+//     const [enrollments, grades, recentAttendances, deliberation] = await Promise.all([
+//       Enrollment.find({ student: studentId })
+//         .populate('ue',      'code title credits coefficient')
+//         .populate('program', 'name code')
+//         .lean(),
+//       Grade.find({ student: studentId })
+//         .populate('ue', 'code title credits')
+//         .lean(),
+//       Attendance.find({ student: studentId })
+//         .sort({ date: -1 })
+//         .limit(5)
+//         .populate('course', 'code title')
+//         .lean(),
+//       Deliberation.findOne({ student: studentId }).sort({ createdAt: -1 }).lean(),
+//     ]);
+
+//     const validGrades = grades.filter((g) => g.finalAverage > 0);
+//     const average =
+//       validGrades.length > 0
+//         ? +(validGrades.reduce((acc, g) => acc + g.finalAverage, 0) / validGrades.length).toFixed(2)
+//         : 0;
+
+//     // Taux de présence
+//     const totalAtt   = await Attendance.countDocuments({ student: studentId });
+//     const presentAtt = await Attendance.countDocuments({ student: studentId, status: 'present' });
+//     const attendanceRate = totalAtt > 0 ? Math.round((presentAtt / totalAtt) * 100) : 0;
+
+//     res.json({
 //       success: true,
-//       role: "staff",
-//       message: "Bienvenue sur le Dashboard Staff",
 //       data: {
-//         totalRegistrationsToday: 12,
-//         pendingVerifications: 8,
-//         recentActivities: 45
-//       }
+//         enrollments:      enrollments.length,
+//         averageGrade:     average,
+//         attendanceRate,
+//         recentAttendances,
+//         grades,
+//         deliberation: deliberation
+//           ? {
+//               validated:            deliberation.validated,
+//               certificateGenerated: deliberation.certificateGenerated,
+//               mention:              deliberation.mention,
+//               certificateNumber:    deliberation.certificateNumber,
+//               session:              deliberation.session,
+//               generalAverage:       deliberation.generalAverage,
+//             }
+//           : null,
+//       },
 //     });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//   } catch (err) {
+//     console.error('[getStudentDashboard]', err);
+//     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
 
-// // ==================== DASHBOARD CHEF DE DÉPARTEMENT ====================
-// const getDepartmentHeadDashboard = async (req, res) => {
+// // ═════════════════════════════════════════════════════════════
+// // 5. DASHBOARD STAFF
+// // ═════════════════════════════════════════════════════════════
+// exports.getStaffDashboard = async (req, res) => {
 //   try {
-//     res.status(200).json({
+//     const [totalStudents, totalEnrollments, unpaidFees, recentStudents] = await Promise.all([
+//       User.countDocuments({ role: 'student' }),
+//       Enrollment.countDocuments(),
+//       Fee.countDocuments({ status: { $in: ['pending', 'partial'] } }),
+//       User.find({ role: 'student' })
+//         .sort({ createdAt: -1 })
+//         .limit(5)
+//         .select('firstName lastName email studentId createdAt')
+//         .lean(),
+//     ]);
+
+//     res.json({
 //       success: true,
-//       role: "department_head",
-//       message: "Bienvenue sur le Dashboard Chef de Département",
 //       data: {
-//         departmentStudents: 320,
-//         departmentTeachers: 24,
-//         coursesInDepartment: 48,
-//         averagePerformance: "13.8/20"
-//       }
+//         students:         totalStudents,
+//         enrollments:      totalEnrollments,
+//         unpaidFees,
+//         recentStudents,
+//       },
 //     });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//   } catch (err) {
+//     console.error('[getStaffDashboard]', err);
+//     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
 
-// // ==================== STATISTIQUES GLOBALES ====================
-// const getOverallStats = async (req, res) => {
+// // ═════════════════════════════════════════════════════════════
+// // 6. DASHBOARD CHEF DE DÉPARTEMENT
+// // ═════════════════════════════════════════════════════════════
+// exports.getDepartmentHeadDashboard = async (req, res) => {
 //   try {
-//     res.status(200).json({
+//     // 'department' est une String sur le User (pas un ObjectId)
+//     const department = req.user.department;
+
+//     const [courses, teachers] = await Promise.all([
+//       Course.find({ /* pas de champ 'department' dans Course → on cherche via program */ })
+//         .populate({
+//           path:   'program',
+//           match:  { department },       // filtre sur le programme
+//           select: 'name code department',
+//         })
+//         .populate('teacher', 'firstName lastName')
+//         .lean(),
+//       User.find({ role: 'teacher', department }).select('firstName lastName employeeId title').lean(),
+//     ]);
+
+//     // Cours dont le programme correspond au département
+//     const deptCourses = courses.filter((c) => c.program !== null);
+
+//     const ueIds = [...new Set(deptCourses.map((c) => c.ue?.toString()).filter(Boolean))];
+//     const totalEnrolled = await Enrollment.countDocuments({ ue: { $in: ueIds } });
+
+//     res.json({
 //       success: true,
-//       message: "Statistiques globales du système",
 //       data: {
-//         totalUsers: 1450,
-//         totalStudents: 1243,
-//         totalTeachers: 87,
-//         totalPrograms: 12,
-//         totalCourses: 156
-//       }
+//         department,
+//         totalCourses:       deptCourses.length,
+//         totalTeachers:      teachers.length,
+//         totalEnrolled,
+//         averageClassSize:   deptCourses.length > 0 ? Math.round(totalEnrolled / deptCourses.length) : 0,
+//         teachers,
+//       },
 //     });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//   } catch (err) {
+//     console.error('[getDepartmentHeadDashboard]', err);
+//     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
 
-// // ==================== DASHBOARD DYNAMIQUE SELON LE RÔLE ====================
-// const getUserDashboard = async (req, res) => {
-//   try {
-//     if (!req.user) {
-//       return res.status(401).json({ success: false, message: "Utilisateur non authentifié" });
-//     }
+// // ═════════════════════════════════════════════════════════════
+// // 7. DASHBOARD DYNAMIQUE selon le rôle connecté
+// // ═════════════════════════════════════════════════════════════
+// exports.getUserDashboard = async (req, res) => {
+//   const role = req.user?.role;
 
-//     const role = req.user.role;
-
-//     switch (role) {
-//       case 'admin':
-//         return getAdminDashboard(req, res);
-//       case 'teacher':
-//         return getTeacherDashboard(req, res);
-//       case 'student':
-//         return getStudentDashboard(req, res);
-//       case 'staff':
-//         return getStaffDashboard(req, res);
-//       case 'department_head':
-//         return getDepartmentHeadDashboard(req, res);
-//       default:
-//         return res.status(200).json({
-//           success: true,
-//           message: `Dashboard pour le rôle : ${role}`,
-//           role: role
-//         });
-//     }
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//   switch (role) {
+//     case 'super_admin':           // ✅ super_admin → même dashboard qu'admin
+//     case 'admin':
+//       return exports.getAdminDashboard(req, res);
+//     case 'teacher':
+//       return exports.getTeacherDashboard(req, res);
+//     case 'student':
+//       return exports.getStudentDashboard(req, res);
+//     case 'staff':
+//       return exports.getStaffDashboard(req, res);
+//     case 'department_head':
+//       return exports.getDepartmentHeadDashboard(req, res);
+//     default:
+//       return res.status(400).json({ success: false, message: `Rôle non supporté : ${role}` });
 //   }
 // };
-
-// // ==================== EXPORT ====================
-// module.exports = {
-//   getAdminDashboard,
-//   getTeacherDashboard,
-//   getStudentDashboard,
-//   getStaffDashboard,
-//   getDepartmentHeadDashboard,
-//   getOverallStats,
-//   getUserDashboard
-// };
-
 
 
 
 // controller/Dashboard.controller.js
-const User = require('../models/User.model');
-const Course = require('../models/Course.model');
-const Enrollment = require('../models/Enrollment.model');
-const Grade = require('../models/Grade.model');
-const Attendance = require('../models/Attendance.model');
-const Deliberation = require('../models/Deliberation');  // ✅ import du modèle délibération
 
-// ---------- Helper : stats de délibération pour une année donnée ----------
+const User       = require('../models/User.model');
+const Course     = require('../models/Course.model');
+const Enrollment = require('../models/Enrollment.model');
+const Grade      = require('../models/Grade.model');
+const Attendance = require('../models/Attendance.model');
+const Deliberation = require('../models/Deliberation');
+const Fee        = require('../models/Fee.model');
+const Program    = require('../models/Program.model');
+
+// ─────────────────────────────────────────────────────────────
+// Helper : année académique courante  ex: "2024-2025"
+// ─────────────────────────────────────────────────────────────
+const currentAcademicYear = () => {
+  const y = new Date().getFullYear();
+  return `${y}-${y + 1}`;
+};
+
+// ─────────────────────────────────────────────────────────────
+// Helper : stats délibération
+// ─────────────────────────────────────────────────────────────
 const getDeliberationStats = async (academicYear) => {
   const filter = academicYear ? { academicYear } : {};
-  const totalEligible = await User.countDocuments({ role: 'student', generalAverage: { $gte: 10 } });
-  const deliberated = await Deliberation.countDocuments({ ...filter, validated: true });
-  const certified = await Deliberation.countDocuments({ ...filter, certificateGenerated: true });
-  return { eligible: totalEligible, deliberated, certified, pending: totalEligible - deliberated };
+  const [deliberated, certified, total] = await Promise.all([
+    Deliberation.countDocuments({ ...filter, validated: true }),
+    Deliberation.countDocuments({ ...filter, certificateGenerated: true }),
+    Deliberation.countDocuments(filter),
+  ]);
+  return { total, deliberated, certified, pending: total - deliberated };
 };
 
-// ---------- 1. Statistiques globales (utilisées par le super admin) ----------
+// ═════════════════════════════════════════════════════════════
+// 1. STATS GLOBALES  —  SuperAdmin
+// ═════════════════════════════════════════════════════════════
 exports.getOverallStats = async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
-    const academicYear = `${currentYear}-${currentYear + 1}`;
+    const academicYear = currentAcademicYear();
 
-    const totalStudents = await User.countDocuments({ role: 'student' });
-    const totalTeachers = await User.countDocuments({ role: 'teacher' });
-    const totalStaff = await User.countDocuments({ role: 'staff' });
-    const totalCourses = await Course.countDocuments();
-    const totalEnrollments = await Enrollment.countDocuments();
-    const avgAttendance = await Attendance.aggregate([
-      { $group: { _id: null, avg: { $avg: '$percentage' } } }
+    const [
+      totalStudents,
+      totalTeachers,
+      totalStaff,
+      totalCourses,
+      totalPrograms,
+      totalEnrollments,
+      avgAttendanceResult,
+      avgGradeResult,
+      deliberationStats,
+    ] = await Promise.all([
+      User.countDocuments({ role: 'student' }),
+      User.countDocuments({ role: 'teacher' }),
+      User.countDocuments({ role: 'staff' }),
+      Course.countDocuments(),
+      Program.countDocuments({ isActive: true }),
+      Enrollment.countDocuments(),
+      // Attendance n'a pas de champ 'percentage' → on calcule le taux présent/total
+      Attendance.aggregate([
+        {
+          $group: {
+            _id: null,
+            total:   { $sum: 1 },
+            present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+          },
+        },
+        { $project: { rate: { $multiply: [{ $divide: ['$present', '$total'] }, 100] } } },
+      ]),
+      Grade.aggregate([
+        { $match: { finalAverage: { $gt: 0 } } },
+        { $group: { _id: null, avg: { $avg: '$finalAverage' } } },
+      ]),
+      getDeliberationStats(academicYear),
     ]);
-    const avgGrade = await Grade.aggregate([
-      { $group: { _id: null, avg: { $avg: '$finalAverage' } } }
-    ]);
-
-    const deliberationStats = await getDeliberationStats(academicYear);
 
     res.json({
       success: true,
       data: {
-        users: { students: totalStudents, teachers: totalTeachers, staff: totalStaff },
-        courses: totalCourses,
+        users: {
+          students: totalStudents,
+          teachers: totalTeachers,
+          staff:    totalStaff,
+          total:    totalStudents + totalTeachers + totalStaff,
+        },
+        courses:     totalCourses,
+        programs:    totalPrograms,
         enrollments: totalEnrollments,
-        attendance: { average: avgAttendance[0]?.avg || 0 },
-        grades: { average: avgGrade[0]?.avg || 0 },
-        deliberation: deliberationStats
-      }
+        attendance:  { rate: Math.round(avgAttendanceResult[0]?.rate || 0) },
+        grades:      { average: +(avgGradeResult[0]?.avg || 0).toFixed(2) },
+        deliberation: deliberationStats,
+      },
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[getOverallStats]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ---------- 2. Tableau de bord ADMIN ----------
+// ═════════════════════════════════════════════════════════════
+// 2. DASHBOARD ADMIN  (+ super_admin redirigé ici via getUserDashboard)
+// ═════════════════════════════════════════════════════════════
 exports.getAdminDashboard = async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
-    const academicYear = `${currentYear}-${currentYear + 1}`;
+    const academicYear = currentAcademicYear();
 
-    const totalStudents = await User.countDocuments({ role: 'student' });
-    const totalTeachers = await User.countDocuments({ role: 'teacher' });
-    const totalStaff = await User.countDocuments({ role: 'staff' });
-    const totalCourses = await Course.countDocuments();
-    const pendingGrades = await Grade.countDocuments({ status: 'pending' });
-    const recentEnrollments = await Enrollment.find().sort({ createdAt: -1 }).limit(5).populate('student course');
+    const [
+      totalStudents,
+      totalTeachers,
+      totalStaff,
+      totalCourses,
+      deliberationStats,
+      // ✅ FIX : Enrollment ne contient PAS de champ 'course' → on populate uniquement 'student' et 'ue'
+      recentEnrollments,
+      // Frais impayés
+      unpaidFees,
+    ] = await Promise.all([
+      User.countDocuments({ role: 'student' }),
+      User.countDocuments({ role: 'teacher' }),
+      User.countDocuments({ role: 'staff' }),
+      Course.countDocuments(),
+      getDeliberationStats(academicYear),
+      Enrollment.find()
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('student', 'firstName lastName email')   // ✅ champs limités
+        .populate('ue',      'code title')                 // ✅ 'ue' existe dans Enrollment
+        .populate('program', 'name code')
+        .lean(),
+      Fee.countDocuments({ status: { $in: ['pending', 'partial'] } }),
+    ]);
 
-    const deliberationStats = await getDeliberationStats(academicYear);
+    // Notes en attente : Grade n'a pas de champ 'status' → on compte les non validées
+    const pendingGrades = await Grade.countDocuments({ isValidated: false });
 
     res.json({
       success: true,
       data: {
-        students: totalStudents,
-        teachers: totalTeachers,
-        staff: totalStaff,
-        courses: totalCourses,
+        students:          totalStudents,
+        teachers:          totalTeachers,
+        staff:             totalStaff,
+        courses:           totalCourses,
         pendingGrades,
+        unpaidFees,
         recentEnrollments,
-        deliberation: deliberationStats
-      }
+        deliberation:      deliberationStats,
+      },
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[getAdminDashboard]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ---------- 3. Tableau de bord ENSEIGNANT ----------
+// ═════════════════════════════════════════════════════════════
+// 3. DASHBOARD ENSEIGNANT
+// ═════════════════════════════════════════════════════════════
 exports.getTeacherDashboard = async (req, res) => {
   try {
     const teacherId = req.user._id;
-    const myCourses = await Course.find({ teacher: teacherId }).populate('ue');
-    const courseIds = myCourses.map(c => c._id);
 
-    const pendingGrades = await Grade.countDocuments({ course: { $in: courseIds }, status: 'pending' });
-    const recentAbsences = await Attendance.find({ course: { $in: courseIds }, status: 'absent' })
-      .sort({ date: -1 }).limit(5).populate('student');
+    const myCourses = await Course.find({ teacher: teacherId })
+      .populate('ue', 'code title credits')
+      .lean();
+
+    const courseIds = myCourses.map((c) => c._id);
+
+    // Grade n'a pas de champ 'status' → notes non validées = isValidated: false
+    const [pendingGrades, recentAbsences, totalEnrolled] = await Promise.all([
+      Grade.countDocuments({ course: { $in: courseIds }, isValidated: false }),
+      Attendance.find({ course: { $in: courseIds }, status: 'absent' })
+        .sort({ date: -1 })
+        .limit(5)
+        .populate('student', 'firstName lastName studentId')
+        .populate('course',  'code title')
+        .lean(),
+      Enrollment.countDocuments({ ue: { $in: myCourses.map((c) => c.ue?._id).filter(Boolean) } }),
+    ]);
 
     res.json({
       success: true,
       data: {
-        totalCourses: myCourses.length,
+        totalCourses:   myCourses.length,
+        totalEnrolled,
         pendingGrades,
         recentAbsences,
-        myCourses
-      }
+        myCourses,
+      },
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[getTeacherDashboard]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ---------- 4. Tableau de bord ÉTUDIANT ----------
+// ═════════════════════════════════════════════════════════════
+// 4. DASHBOARD ÉTUDIANT
+// ═════════════════════════════════════════════════════════════
 exports.getStudentDashboard = async (req, res) => {
   try {
     const studentId = req.user._id;
-    const enrollments = await Enrollment.find({ student: studentId }).populate('course');
-    const grades = await Grade.find({ student: studentId }).populate('course');
-    const attendances = await Attendance.find({ student: studentId }).sort({ date: -1 }).limit(5);
-    const deliberation = await Deliberation.findOne({ student: studentId }).sort({ createdAt: -1 });
+
+    const [enrollments, grades, recentAttendances, deliberation] = await Promise.all([
+      Enrollment.find({ student: studentId })
+        .populate('ue',      'code title credits coefficient')
+        .populate('program', 'name code')
+        .lean(),
+      Grade.find({ student: studentId })
+        .populate('ue', 'code title credits')
+        .lean(),
+      Attendance.find({ student: studentId })
+        .sort({ date: -1 })
+        .limit(5)
+        .populate('course', 'code title')
+        .lean(),
+      Deliberation.findOne({ student: studentId }).sort({ createdAt: -1 }).lean(),
+    ]);
+
+    const validGrades = grades.filter((g) => g.finalAverage > 0);
+    const average =
+      validGrades.length > 0
+        ? +(validGrades.reduce((acc, g) => acc + g.finalAverage, 0) / validGrades.length).toFixed(2)
+        : 0;
+
+    // Taux de présence
+    const totalAtt   = await Attendance.countDocuments({ student: studentId });
+    const presentAtt = await Attendance.countDocuments({ student: studentId, status: 'present' });
+    const attendanceRate = totalAtt > 0 ? Math.round((presentAtt / totalAtt) * 100) : 0;
 
     res.json({
       success: true,
       data: {
-        enrollments: enrollments.length,
-        averageGrade: grades.reduce((acc, g) => acc + (g.finalAverage || 0), 0) / (grades.length || 1),
-        recentAttendances: attendances,
-        deliberation: deliberation ? {
-          validated: deliberation.validated,
-          certificateGenerated: deliberation.certificateGenerated,
-          mention: deliberation.mention,
-          certificateNumber: deliberation.certificateNumber
-        } : null
-      }
+        enrollments:      enrollments.length,
+        averageGrade:     average,
+        attendanceRate,
+        recentAttendances,
+        grades,
+        deliberation: deliberation
+          ? {
+              validated:            deliberation.validated,
+              certificateGenerated: deliberation.certificateGenerated,
+              mention:              deliberation.mention,
+              certificateNumber:    deliberation.certificateNumber,
+              session:              deliberation.session,
+              generalAverage:       deliberation.generalAverage,
+            }
+          : null,
+      },
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[getStudentDashboard]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ---------- 5. Tableau de bord STAFF ----------
+// ═════════════════════════════════════════════════════════════
+// 5. DASHBOARD STAFF
+// ═════════════════════════════════════════════════════════════
 exports.getStaffDashboard = async (req, res) => {
   try {
-    const totalStudents = await User.countDocuments({ role: 'student' });
-    const totalEnrollments = await Enrollment.countDocuments();
-    const pendingFees = await Enrollment.countDocuments({ feeStatus: 'pending' });
-    const recentLibraryLoans = []; // à adapter selon ton modèle bibliothèque
+    const [totalStudents, totalEnrollments, unpaidFees, recentStudents] = await Promise.all([
+      User.countDocuments({ role: 'student' }),
+      Enrollment.countDocuments(),
+      Fee.countDocuments({ status: { $in: ['pending', 'partial'] } }),
+      User.find({ role: 'student' })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('firstName lastName email studentId createdAt')
+        .lean(),
+    ]);
 
     res.json({
       success: true,
       data: {
-        students: totalStudents,
-        enrollments: totalEnrollments,
-        pendingFees,
-        recentLibraryLoans
-      }
+        students:         totalStudents,
+        enrollments:      totalEnrollments,
+        unpaidFees,
+        recentStudents,
+      },
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[getStaffDashboard]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ---------- 6. Tableau de bord CHEF DE DEPARTEMENT ----------
+// ═════════════════════════════════════════════════════════════
+// 6. DASHBOARD CHEF DE DÉPARTEMENT
+// ═════════════════════════════════════════════════════════════
 exports.getDepartmentHeadDashboard = async (req, res) => {
   try {
-    const departmentId = req.user.department;
-    const courses = await Course.find({ department: departmentId }).populate('teacher');
-    const students = await User.find({ role: 'student', department: departmentId });
-    const stats = {
-      totalCourses: courses.length,
-      totalStudents: students.length,
-      averageClassSize: Math.round(students.length / (courses.length || 1))
-    };
-    res.json({ success: true, data: stats });
+    // 'department' est une String sur le User (pas un ObjectId)
+    const department = req.user.department;
+
+    const [courses, teachers] = await Promise.all([
+      Course.find({ /* pas de champ 'department' dans Course → on cherche via program */ })
+        .populate({
+          path:   'program',
+          match:  { department },       // filtre sur le programme
+          select: 'name code department',
+        })
+        .populate('teacher', 'firstName lastName')
+        .lean(),
+      User.find({ role: 'teacher', department }).select('firstName lastName employeeId title').lean(),
+    ]);
+
+    // Cours dont le programme correspond au département
+    const deptCourses = courses.filter((c) => c.program !== null);
+
+    const ueIds = [...new Set(deptCourses.map((c) => c.ue?.toString()).filter(Boolean))];
+    const totalEnrolled = await Enrollment.countDocuments({ ue: { $in: ueIds } });
+
+    res.json({
+      success: true,
+      data: {
+        department,
+        totalCourses:       deptCourses.length,
+        totalTeachers:      teachers.length,
+        totalEnrolled,
+        averageClassSize:   deptCourses.length > 0 ? Math.round(totalEnrolled / deptCourses.length) : 0,
+        teachers,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[getDepartmentHeadDashboard]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ---------- 7. Dashboard personnel (basé sur le rôle de l'utilisateur) ----------
+// ═════════════════════════════════════════════════════════════
+// 7. DASHBOARD DYNAMIQUE selon le rôle connecté
+// ═════════════════════════════════════════════════════════════
 exports.getUserDashboard = async (req, res) => {
-  const role = req.user.role;
+  const role = req.user?.role;
+
   switch (role) {
+    case 'super_admin':           // ✅ super_admin → même dashboard qu'admin
     case 'admin':
-    case 'super_admin':
       return exports.getAdminDashboard(req, res);
     case 'teacher':
       return exports.getTeacherDashboard(req, res);
@@ -354,6 +696,6 @@ exports.getUserDashboard = async (req, res) => {
     case 'department_head':
       return exports.getDepartmentHeadDashboard(req, res);
     default:
-      return res.status(400).json({ message: 'Rôle non supporté' });
+      return res.status(400).json({ success: false, message: `Rôle non supporté : ${role}` });
   }
 };

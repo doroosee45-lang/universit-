@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { X, UserPlus, Copy, CheckCircle, Eye, EyeOff, Mail } from 'lucide-react';
 import { authAPI } from '../../services/services';
 
@@ -120,7 +120,7 @@ export default function CreateUserModal({ isOpen, onClose, currentUserRole }) {
               </div>
 
               {/* Nom / Prénom */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Prénom</label>
                   <input value={form.firstName} onChange={e => handleChange('firstName', e.target.value)}
@@ -177,7 +177,7 @@ export default function CreateUserModal({ isOpen, onClose, currentUserRole }) {
               )}
 
               {form.role === 'student' && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Niveau</label>
                     <select value={form.level} onChange={e => handleChange('level', e.target.value)}

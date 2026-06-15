@@ -1,7 +1,6 @@
-// pages/jury/AdminJuryPage.jsx
 import { useState, useEffect, useCallback } from 'react';
-import { Award, CheckCircle, Eye, FileText, Search, X, GraduationCap, Users, ShieldCheck, ChevronLeft, ChevronRight, ThumbsUp } from 'lucide-react';
-import { deliberationAPI } from '../../services/services';
+import { Award, CheckCircle, Eye, FileText, Search, X, GraduationCap, Users, ShieldCheck, ChevronLeft, ChevronRight, ThumbsUp, Mail } from 'lucide-react';
+import { deliberationAPI, juryAPI, teacherAPI, programAPI } from '../../services/services';
 import { useAuth } from '../../components/context/AuthContext';
 
 /* ─── Google Font injection ─────────────────────────────────────────────── */
@@ -168,21 +167,31 @@ const SectionHeader = ({ title, sub }) => (
   </div>
 );
 
-/* ─── Table ─────────────────────────────────────────────────────────────── */
+/* ─── Table (corrigée) ─────────────────────────────────────────────────── */
 function Table({ columns, data, loading }) {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 56 }}><Spinner size={36} /></div>;
   if (!data?.length) return <div style={{ textAlign: 'center', padding: 56, color: T.silver }}><GraduationCap size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .35 }} /><p style={{ fontFamily: T.font, fontSize: 13 }}>Aucun étudiant à délibérer</p></div>;
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: T.font }}>
-        <thead><tr style={{ background: T.bg }}>
-          {columns.map(c => <th key={c.key} style={{ padding: '11px 18px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: T.silver, letterSpacing: .6, textTransform: 'uppercase', borderBottom: `1px solid ${T.line}` }}>{c.header}</th>)}
-        </tr></thead>
+        <thead>
+          <tr style={{ background: T.bg }}>
+            {columns.map(c => (
+              <th key={c.key} style={{ padding: '11px 18px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: T.silver, letterSpacing: .6, textTransform: 'uppercase', borderBottom: `1px solid ${T.line}` }}>
+                {c.header}
+              </th>
+            ))}
+          </tr>
+        </thead>
         <tbody>
           {data.map((row, i) => (
             <tr key={i} style={{ borderBottom: `1px solid ${T.line}`, transition: 'background .12s' }} onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'} onMouseLeave={e => e.currentTarget.style.background = T.white}>
-              {columns.map(c => <td key={c.key} style={{ padding: '13px 18px', fontSize: 13, color: T.navyLt, verticalAlign: 'middle' }}>{c.render ? c.render(row[c.key], row) : row[c.key]}</td>)}
-            </tr>
+              {columns.map(c => (
+                <td key={c.key} style={{ padding: '13px 18px', fontSize: 13, color: T.navyLt, verticalAlign: 'middle' }}>
+                  {c.render ? c.render(row[c.key], row) : row[c.key]}
+                </td>
+              ))}
+             </tr>
           ))}
         </tbody>
       </table>
@@ -283,6 +292,7 @@ export default function AdminJuryPage() {
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { toast, ToastContainer } = useToast();
 
+  // États existants
   const [students, setStudents] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -296,9 +306,43 @@ export default function AdminJuryPage() {
   const [certModal, setCertModal] = useState({ open: false, student: null });
   const [stats, setStats] = useState({ eligible: 0, deliberated: 0, certified: 0 });
 
-  // Charger les étudiants éligibles via l'API deliberation
+  // États pour le jury
+  const [juryModalOpen, setJuryModalOpen] = useState(false);
+  const [teachers, setTeachers] = useState([]);
+  const [selectedTeachers, setSelectedTeachers] = useState([]);
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
+  const [savingJury, setSavingJury] = useState(false);
+
+  // États pour les programmes réels (filières)
+  const [programs, setPrograms] = useState([]);
+  const [loadingPrograms, setLoadingPrograms] = useState(true);
+
+  // Chargement des programmes depuis l'API
+  useEffect(() => {
+    const loadPrograms = async () => {
+      try {
+        const res = await programAPI.getAll({ limit: 100 });
+        const data = res?.data?.data || res?.data || [];
+        setPrograms(data);
+      } catch (err) {
+        console.error('Erreur chargement programmes', err);
+        toast('Erreur chargement des filières', 'error');
+      } finally {
+        setLoadingPrograms(false);
+      }
+    };
+    loadPrograms();
+  }, []);
+
+  // Construction des options de filtre programme à partir des données réelles
+  const programOptions = [
+    { value: '', label: 'Toutes les filières' },
+    ...programs.map(p => ({ value: p._id, label: p.name }))
+  ];
+
+  // Charger les étudiants éligibles
   const loadStudents = useCallback(async () => {
-    if (!user) return; // attendre que l'utilisateur soit chargé
+    if (!user) return;
     setLoading(true);
     try {
       const params = { page, limit, academicYear, session };
@@ -327,6 +371,45 @@ export default function AdminJuryPage() {
       console.error(err);
     }
   }, [academicYear, user]);
+
+  // Charger les enseignants et les membres actuels du jury
+  const loadTeachersAndJury = useCallback(async () => {
+    setLoadingTeachers(true);
+    try {
+      // ✅ Correction : remplacer userAPI.getAll() par teacherAPI.getAll()
+      const teachersRes = await teacherAPI.getAll({ limit: 200 });
+      const allTeachers = teachersRes?.data?.data || teachersRes?.data || [];
+      setTeachers(allTeachers);
+
+      const juryRes = await juryAPI.getMembers({ academicYear, session });
+      const currentMembers = juryRes?.data?.data || juryRes?.data || [];
+      setSelectedTeachers(currentMembers.map(m => m._id));
+    } catch (err) {
+      console.error(err);
+      toast('Erreur chargement des données jury', 'error');
+    } finally {
+      setLoadingTeachers(false);
+    }
+  }, [academicYear, session, toast]);
+
+  // Sauvegarder les membres et envoyer les invitations
+  const handleSaveJury = async () => {
+    setSavingJury(true);
+    try {
+      await juryAPI.updateMembers({ memberIds: selectedTeachers }, { academicYear, session });
+      if (selectedTeachers.length > 0) {
+        await juryAPI.inviteMembers({ academicYear, session, memberIds: selectedTeachers });
+        toast('Membres enregistrés et invitations envoyées');
+      } else {
+        toast('Membres enregistrés');
+      }
+      setJuryModalOpen(false);
+    } catch (err) {
+      toast(err.message || 'Erreur lors de l\'enregistrement', 'error');
+    } finally {
+      setSavingJury(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -364,21 +447,11 @@ export default function AdminJuryPage() {
     )},
   ];
 
-  const programOptions = [
-    { value: '', label: 'Toutes les filières' },
-    { value: 'informatique', label: 'Informatique' },
-    { value: 'mathematiques', label: 'Mathématiques' },
-    { value: 'physique', label: 'Physique' },
-    { value: 'chimie', label: 'Chimie' },
-    { value: 'biologie', label: 'Biologie' },
-  ];
-
   const sessionOptions = [
     { value: 'principale', label: 'Session principale' },
     { value: 'rattrapage', label: 'Session de rattrapage' },
   ];
 
-  // Vérification d'accès : si l'utilisateur n'est pas admin, afficher un message
   if (!user) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: T.font }}><Spinner size={40} /></div>;
   }
@@ -401,15 +474,20 @@ export default function AdminJuryPage() {
         @keyframes popIn { from { opacity:0; transform:scale(.94); } to { opacity:1; transform:scale(1); } }
       `}</style>
 
-      {/* En-tête */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4 }}>
-          <div style={{ width: 42, height: 42, background: T.navy, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ShieldCheck size={22} color={T.gold} /></div>
+      {/* En‑tête avec bouton Gérer le jury */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 42, height: 42, background: T.navy, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldCheck size={22} color={T.gold} />
+          </div>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: T.navy, margin: 0 }}>Jury de Délibération</h1>
             <p style={{ fontSize: 12, color: T.silver, margin: 0 }}>Validation des résultats et émission des diplômes — Année {academicYear}</p>
           </div>
         </div>
+        <Btn variant="primary" onClick={() => { loadTeachersAndJury(); setJuryModalOpen(true); }}>
+          <Users size={16} /> Gérer le jury
+        </Btn>
       </div>
 
       {/* Stats */}
@@ -427,9 +505,15 @@ export default function AdminJuryPage() {
             <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Nom, prénom, matricule…" style={{ width: '100%', padding: '9px 13px 9px 34px', border: `1.5px solid ${T.line}`, borderRadius: 9, fontSize: 13, fontFamily: T.font, outline: 'none', color: T.navy, background: T.bg }} />
             {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer' }}><X size={14} /></button>}
           </div>
-          <div style={{ minWidth: 160 }}><Sel value={programFilter} onChange={e => { setProgramFilter(e.target.value); setPage(1); }} options={programOptions} style={{ marginBottom: 0 }} /></div>
-          <div style={{ minWidth: 160 }}><Sel value={academicYear} onChange={e => setAcademicYear(e.target.value)} options={[{ value: '2023-2024', label: '2023-2024' }, { value: '2024-2025', label: '2024-2025' }]} style={{ marginBottom: 0 }} /></div>
-          <div style={{ minWidth: 160 }}><Sel value={session} onChange={e => setSession(e.target.value)} options={sessionOptions} style={{ marginBottom: 0 }} /></div>
+          <div style={{ minWidth: 160 }}>
+            <Sel value={programFilter} onChange={e => { setProgramFilter(e.target.value); setPage(1); }} options={programOptions} style={{ marginBottom: 0 }} />
+          </div>
+          <div style={{ minWidth: 160 }}>
+            <Sel value={academicYear} onChange={e => setAcademicYear(e.target.value)} options={[{ value: '2023-2024', label: '2023-2024' }, { value: '2024-2025', label: '2024-2025' }]} style={{ marginBottom: 0 }} />
+          </div>
+          <div style={{ minWidth: 160 }}>
+            <Sel value={session} onChange={e => setSession(e.target.value)} options={sessionOptions} style={{ marginBottom: 0 }} />
+          </div>
         </div>
       </Card>
 
@@ -440,7 +524,48 @@ export default function AdminJuryPage() {
         <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
       </Card>
 
-      {/* Modals */}
+      {/* Modale de gestion du jury */}
+      <Modal isOpen={juryModalOpen} onClose={() => setJuryModalOpen(false)} title="Membres du jury" size="lg">
+        <div style={{ padding: 24 }}>
+          {loadingTeachers ? (
+            <div style={{ textAlign: 'center', padding: 40 }}><Spinner size={36} /></div>
+          ) : (
+            <>
+              <p style={{ marginBottom: 16, color: T.slate }}>Sélectionnez les enseignants qui participeront au jury pour la session <strong>{session}</strong> de l’année <strong>{academicYear}</strong> :</p>
+              <div style={{ maxHeight: 400, overflowY: 'auto', border: `1px solid ${T.line}`, borderRadius: 8, padding: 12 }}>
+                {teachers.map(teacher => (
+                  <label key={teacher._id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTeachers.includes(teacher._id)}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setSelectedTeachers(prev => [...prev, teacher._id]);
+                        } else {
+                          setSelectedTeachers(prev => prev.filter(id => id !== teacher._id));
+                        }
+                      }}
+                      style={{ width: 16, height: 16, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: 13, color: T.navy }}>
+                      {teacher.firstName} {teacher.lastName} <span style={{ color: T.silver, fontSize: 11 }}>({teacher.email})</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {teachers.length === 0 && <p style={{ textAlign: 'center', color: T.silver }}>Aucun enseignant trouvé</p>}
+              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+                <Btn variant="secondary" onClick={() => setJuryModalOpen(false)}>Annuler</Btn>
+                <Btn variant="gold" onClick={handleSaveJury} loading={savingJury}>
+                  <Mail size={16} /> Enregistrer et inviter
+                </Btn>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modales existantes */}
       <Modal isOpen={delibModal.open} onClose={() => setDelibModal({ open: false, student: null })} title="Délibération du jury" size="md">
         <DeliberationModal student={delibModal.student} onValidate={() => { setDelibModal({ open: false, student: null }); refresh(); }} onCancel={() => setDelibModal({ open: false, student: null })} />
       </Modal>
@@ -451,141 +576,3 @@ export default function AdminJuryPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// // Imports supplémentaires
-// import { juryAPI, userAPI } from '../../services/services';
-
-// // Dans le composant AdminJuryPage, ajouter ces états :
-// const [juryModalOpen, setJuryModalOpen] = useState(false);
-// const [teachers, setTeachers] = useState([]);
-// const [selectedTeachers, setSelectedTeachers] = useState([]);
-// const [loadingTeachers, setLoadingTeachers] = useState(false);
-// const [savingJury, setSavingJury] = useState(false);
-
-// // Fonction pour charger les enseignants et les membres actuels
-// const loadTeachersAndJury = useCallback(async () => {
-//   setLoadingTeachers(true);
-//   try {
-//     // Récupérer tous les enseignants
-//     const teachersRes = await userAPI.getAll({ role: 'teacher', limit: 200 });
-//     const allTeachers = teachersRes?.data?.data || teachersRes?.data || [];
-//     setTeachers(allTeachers);
-    
-//     // Récupérer les membres actuels du jury
-//     const juryRes = await juryAPI.getMembers({ academicYear, session });
-//     const currentMembers = juryRes?.data?.data || juryRes?.data || [];
-//     setSelectedTeachers(currentMembers.map(m => m._id));
-//   } catch (err) {
-//     console.error(err);
-//     toast('Erreur chargement des données', 'error');
-//   } finally {
-//     setLoadingTeachers(false);
-//   }
-// }, [academicYear, session, toast]);
-
-// // Sauvegarder les membres et envoyer les invitations
-// const handleSaveJury = async () => {
-//   setSavingJury(true);
-//   try {
-//     await juryAPI.updateMembers({ memberIds: selectedTeachers }, { academicYear, session });
-//     if (selectedTeachers.length > 0) {
-//       await juryAPI.inviteMembers({ academicYear, session, memberIds: selectedTeachers });
-//       toast('Membres enregistrés et invitations envoyées');
-//     } else {
-//       toast('Membres enregistrés');
-//     }
-//     setJuryModalOpen(false);
-//   } catch (err) {
-//     toast(err.message || 'Erreur lors de l\'enregistrement', 'error');
-//   } finally {
-//     setSavingJury(false);
-//   }
-// };
-
-// // Ajouter un bouton dans l'en-tête (à côté du titre ou des filtres)
-// // Par exemple, dans la section "En-tête" :
-
-// <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-//   <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-//     <div style={{ width: 42, height: 42, background: T.navy, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-//       <ShieldCheck size={22} color={T.gold} />
-//     </div>
-//     <div>
-//       <h1 style={{ fontSize: 22, fontWeight: 700, color: T.navy, margin: 0 }}>Jury de Délibération</h1>
-//       <p style={{ fontSize: 12, color: T.silver, margin: 0 }}>Validation des résultats et émission des diplômes — Année {academicYear}</p>
-//     </div>
-//   </div>
-//   <Btn variant="primary" onClick={() => { loadTeachersAndJury(); setJuryModalOpen(true); }}>
-//     <Users size={16} /> Gérer le jury
-//   </Btn>
-// </div>
-
-// // Ajouter la modale de gestion du jury (à la fin, avant les autres modales)
-// <Modal isOpen={juryModalOpen} onClose={() => setJuryModalOpen(false)} title="Membres du jury" size="lg">
-//   <div style={{ padding: 24 }}>
-//     {loadingTeachers ? (
-//       <div style={{ textAlign: 'center', padding: 40 }}><Spinner size={36} /></div>
-//     ) : (
-//       <>
-//         <p style={{ marginBottom: 16, color: T.slate }}>Sélectionnez les enseignants qui participeront au jury pour la session {session} {academicYear} :</p>
-//         <div style={{ maxHeight: 400, overflowY: 'auto', border: `1px solid ${T.line}`, borderRadius: 8, padding: 12 }}>
-//           {teachers.map(teacher => (
-//             <label key={teacher._id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
-//               <input
-//                 type="checkbox"
-//                 checked={selectedTeachers.includes(teacher._id)}
-//                 onChange={e => {
-//                   if (e.target.checked) {
-//                     setSelectedTeachers(prev => [...prev, teacher._id]);
-//                   } else {
-//                     setSelectedTeachers(prev => prev.filter(id => id !== teacher._id));
-//                   }
-//                 }}
-//                 style={{ width: 16, height: 16, cursor: 'pointer' }}
-//               />
-//               <span style={{ fontSize: 13, color: T.navy }}>
-//                 {teacher.firstName} {teacher.lastName} <span style={{ color: T.silver, fontSize: 11 }}>({teacher.email})</span>
-//               </span>
-//             </label>
-//           ))}
-//         </div>
-//         {teachers.length === 0 && <p style={{ textAlign: 'center', color: T.silver }}>Aucun enseignant trouvé</p>}
-//         <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-//           <Btn variant="secondary" onClick={() => setJuryModalOpen(false)}>Annuler</Btn>
-//           <Btn variant="gold" onClick={handleSaveJury} loading={savingJury}>
-//             <Mail size={16} /> Enregistrer et inviter
-//           </Btn>
-//         </div>
-//       </>
-//     )}
-//   </div>
-// </Modal>

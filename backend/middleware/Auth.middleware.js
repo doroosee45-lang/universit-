@@ -5,21 +5,14 @@ const { unauthorized } = require('../utils/apiResponse');
 const protect = async (req, res, next) => {
   try {
     let token;
-
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
+    if (!token) return unauthorized(res, 'Accès refusé. Token manquant.');
 
-    if (!token) {
-      return unauthorized(res, 'Accès refusé. Token manquant.');
-    }
-
-    // Vérifier le token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Récupérer l'utilisateur (pas besoin de +isActive)
     const user = await User.findById(decoded.id);
-    
+
     if (!user) return unauthorized(res, 'Utilisateur introuvable.');
     if (!user.isActive) return unauthorized(res, 'Compte désactivé.');
 
@@ -32,7 +25,6 @@ const protect = async (req, res, next) => {
   }
 };
 
-// Middleware optionnel
 const optionalAuth = async (req, res, next) => {
   try {
     let token;
@@ -47,4 +39,15 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
-module.exports = { protect, optionalAuth };
+// ✅ NOUVEAU — à ajouter
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) return unauthorized(res, 'Non authentifié.');
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Accès interdit. Rôle insuffisant.' });
+    }
+    next();
+  };
+};
+
+module.exports = { protect, optionalAuth, authorize }; // ✅ authorize ajouté ici

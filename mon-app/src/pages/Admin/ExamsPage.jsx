@@ -1,4 +1,4 @@
-// // pages/admin/ExamsPage.jsx (version corrigée)
+﻿// // pages/admin/ExamsPage.jsx (version corrigée)
 // import { useState, useEffect, useCallback } from 'react';
 // import { Plus, Edit, Trash2, Send } from 'lucide-react';
 // import { examAPI, ueAPI, programAPI } from '../../services/services';
@@ -298,7 +298,7 @@
   
 //   return (
 //     <div style={{ overflowX: 'auto' }}>
-//       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+//       <div class="overflow-x-auto"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
 //         <thead>
 //           <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #F3F4F6' }}>
 //             {columns.map(col => (
@@ -319,7 +319,7 @@
 //             </tr>
 //           ))}
 //         </tbody>
-//       </table>
+//       </table></div>
 //     </div>
 //   );
 // }
@@ -644,7 +644,7 @@
 //       </Card>
 
 //       <Card>
-//         <Table columns={columns} data={exams} loading={loading} emptyText="Aucun examen trouvé" />
+//         <div class="overflow-x-auto"><table columns={columns} data={exams} loading={loading} emptyText="Aucun examen trouvé" />
 //         <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
 //       </Card>
 
@@ -785,8 +785,8 @@
 
 // pages/admin/ExamsPage.jsx
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Send, ChevronLeft, ChevronRight, X, BookOpen, Clock, Users, Calendar, Tag } from 'lucide-react';
-import { examAPI, ueAPI, programAPI } from '../../services/services';
+import { Plus, Edit2, Trash2, Send, ChevronLeft, ChevronRight, X, BookOpen, Clock, Users, Calendar, Tag, Bell, CheckCircle } from 'lucide-react';
+import { examAPI, ueAPI, programAPI, roomAPI } from '../../services/services';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SESSION_OPTS = [
@@ -831,8 +831,10 @@ const TYPE_META = {
 };
 
 const getCurrentAcademicYear = () => {
-  const y = new Date().getFullYear();
-  return `${y}-${y + 1}`;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  return m >= 9 ? (y + '-' + (y + 1)) : ((y - 1) + '-' + y);
 };
 
 const formatDateTime = (date) => {
@@ -1093,7 +1095,7 @@ const SelectEl = ({ value, onChange, options, required }) => (
 );
 
 // ─── ExamForm ────────────────────────────────────────────────────────────────
-function ExamForm({ exam, ues, programs, onSave, onCancel }) {
+function ExamForm({ exam, ues, programs, rooms, onSave, onCancel }) {
   const isEdit = !!exam?._id;
   const [form, setForm] = useState(() => ({
     title: exam?.title || '',
@@ -1106,7 +1108,7 @@ function ExamForm({ exam, ues, programs, onSave, onCancel }) {
     endDate: exam?.endDate ? exam.endDate.substring(0, 16) : '',
     duration: exam?.duration || 120,
     maxScore: exam?.maxScore || 20,
-    room: exam?.room?.name || exam?.room || '',
+    room: exam?.room?._id || exam?.room || '',
     instructions: exam?.instructions || '',
     isPublished: exam?.isPublished || false,
     academicYear: exam?.academicYear || getCurrentAcademicYear(),
@@ -1212,7 +1214,14 @@ function ExamForm({ exam, ues, programs, onSave, onCancel }) {
           <InputEl type="number" value={form.maxScore} onChange={e => set('maxScore', +e.target.value)} min="1" />
         </Field>
         <Field label="Salle">
-          <InputEl value={form.room} onChange={e => set('room', e.target.value)} placeholder="Ex: Amphi A" />
+          <SelectEl
+            value={form.room}
+            onChange={e => set('room', e.target.value)}
+            options={[
+              { value: '', label: '— Sélectionner une salle —' },
+              ...(rooms || []).map(r => ({ value: r._id, label: `${r.name}${r.building ? ' – ' + r.building : ''}${r.capacity ? ' (' + r.capacity + ' pl.)' : ''}` })),
+            ]}
+          />
         </Field>
       </div>
 
@@ -1255,6 +1264,186 @@ function ExamForm({ exam, ues, programs, onSave, onCancel }) {
         </Btn>
       </div>
     </form>
+  );
+}
+
+// ─── PublishScheduleDialog ────────────────────────────────────────────────────
+function PublishScheduleDialog({ isOpen, onClose, onSuccess, programs }) {
+  const [session,      setSession]      = useState('');
+  const [academicYear, setAcademicYear] = useState(getCurrentAcademicYear());
+  const [loading,      setLoading]      = useState(false);
+  const [preview,      setPreview]      = useState(null);  // { published, notifications }
+  const [error,        setError]        = useState('');
+  const [done,         setDone]         = useState(false);
+
+  const reset = () => {
+    setSession(''); setAcademicYear(getCurrentAcademicYear());
+    setLoading(false); setPreview(null); setError(''); setDone(false);
+  };
+
+  useEffect(() => { if (!isOpen) reset(); }, [isOpen]);
+
+  const handlePreview = async () => {
+    setLoading(true); setError(''); setPreview(null);
+    try {
+      const params = { isPublished: false };
+      if (session)      params.session      = session;
+      if (academicYear) params.academicYear = academicYear;
+      const res = await examAPI.getAll(params);
+      const total = res.data?.total ?? res.data?.data?.length ?? 0;
+      setPreview({ count: total, session, academicYear });
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la vérification');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    setLoading(true); setError('');
+    try {
+      const body = {};
+      if (session)      body.session      = session;
+      if (academicYear) body.academicYear = academicYear;
+      const res = await examAPI.publishSchedule(body);
+      const data = res.data || {};
+      setPreview(prev => ({ ...prev, published: data.published, notifications: data.notifications }));
+      setDone(true);
+      onSuccess(data);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Erreur lors de la publication');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const sessionLabels = { session1: 'Session 1', session2: 'Session 2', rattrapage: 'Rattrapage', mi_session: 'Mi-session', recours: 'Recours' };
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)',
+      backdropFilter: 'blur(3px)', zIndex: 1200,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480,
+        boxShadow: '0 25px 60px rgba(0,0,0,.25)', overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Bell size={18} color="#6366F1" />
+            </div>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Publier l'horaire des examens</h3>
+              <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>Les étudiants et surveillants seront notifiés</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: '#F3F4F6', cursor: 'pointer', color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 24px' }}>
+          {done ? (
+            /* ── Succès ── */
+            <div style={{ textAlign: 'center', padding: '12px 0' }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <CheckCircle size={32} color="#22C55E" />
+              </div>
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>Horaire publié avec succès</p>
+              {preview && (
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16 }}>
+                  <div style={{ padding: '10px 18px', background: '#EEF2FF', borderRadius: 10 }}>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: '#6366F1', margin: 0 }}>{preview.published ?? '?'}</p>
+                    <p style={{ fontSize: 11, color: '#6366F1', margin: 0 }}>Examens publiés</p>
+                  </div>
+                  <div style={{ padding: '10px 18px', background: '#F0FDF4', borderRadius: 10 }}>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: '#16A34A', margin: 0 }}>{preview.notifications ?? '?'}</p>
+                    <p style={{ fontSize: 11, color: '#16A34A', margin: 0 }}>Notifications envoyées</p>
+                  </div>
+                </div>
+              )}
+              <button onClick={onClose} style={{ marginTop: 20, padding: '9px 24px', background: '#6366F1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                Fermer
+              </button>
+            </div>
+          ) : (
+            <>
+              {error && (
+                <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', color: '#9F1239', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+                  {error}
+                </div>
+              )}
+
+              {/* Champs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+                    Session <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(laisser vide = toutes)</span>
+                  </label>
+                  <select value={session} onChange={e => { setSession(e.target.value); setPreview(null); }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, background: '#fff', outline: 'none', cursor: 'pointer' }}>
+                    <option value="">— Toutes les sessions —</option>
+                    {SESSION_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+                    Année académique
+                  </label>
+                  <input value={academicYear} onChange={e => { setAcademicYear(e.target.value); setPreview(null); }}
+                    placeholder="2024-2025"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              {/* Aperçu */}
+              {preview && (
+                <div style={{ padding: '12px 16px', background: preview.count === 0 ? '#FFF7ED' : '#EEF2FF', borderRadius: 10, marginBottom: 16 }}>
+                  {preview.count === 0 ? (
+                    <p style={{ fontSize: 13, color: '#C2410C', margin: 0 }}>
+                      Aucun examen non-publié ne correspond à ces critères.
+                    </p>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#4338CA', margin: '0 0 4px' }}>
+                        {preview.count} examen(s) seront publiés
+                      </p>
+                      <p style={{ fontSize: 12, color: '#6366F1', margin: 0 }}>
+                        {session ? sessionLabels[session] : 'Toutes sessions'} · {academicYear || 'Toutes années'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={onClose} style={{ flex: 1, padding: '9px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>
+                  Annuler
+                </button>
+                {!preview || preview.count === 0 ? (
+                  <button onClick={handlePreview} disabled={loading} style={{ flex: 1, padding: '9px', background: '#6366F1', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: loading ? .7 : 1 }}>
+                    {loading && <Spinner size={13} />}
+                    Vérifier
+                  </button>
+                ) : (
+                  <button onClick={handlePublish} disabled={loading} style={{ flex: 1, padding: '9px', background: '#16A34A', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: loading ? .7 : 1 }}>
+                    {loading ? <Spinner size={13} /> : <Send size={13} />}
+                    Publier & Notifier
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1367,6 +1556,7 @@ export default function ExamsPage() {
 
   const [ues, setUes] = useState([]);
   const [programs, setPrograms] = useState([]);
+  const [rooms, setRooms] = useState([]);
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -1377,9 +1567,10 @@ export default function ExamsPage() {
   const [modal, setModal] = useState({ open: false, exam: null });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, exam: null });
   const [deleting, setDeleting] = useState(false);
+  const [publishDialog, setPublishDialog] = useState(false);
 
   // ── Chargements initiaux ──
-  useEffect(() => { loadUEs(); loadPrograms(); }, []);
+  useEffect(() => { loadUEs(); loadPrograms(); loadRooms(); }, []);
   useEffect(() => { loadExams(); }, [page, filters]);
 
   const loadUEs = async () => {
@@ -1393,6 +1584,13 @@ export default function ExamsPage() {
     try {
       const res = await programAPI.getAll({ limit: 100 });
       setPrograms(res.data?.data || res.data || []);
+    } catch { /* silencieux */ }
+  };
+
+  const loadRooms = async () => {
+    try {
+      const res = await roomAPI.getAll({ limit: 200 });
+      setRooms(res.data?.data || res.data || []);
     } catch { /* silencieux */ }
   };
 
@@ -1477,9 +1675,14 @@ export default function ExamsPage() {
             {total} examen{total !== 1 ? 's' : ''} au total
           </p>
         </div>
-        <Btn onClick={() => setModal({ open: true, exam: null })}>
-          <Plus size={15} /> Planifier un examen
-        </Btn>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Btn variant="success" onClick={() => setPublishDialog(true)}>
+            <Bell size={15} /> Publier l'horaire
+          </Btn>
+          <Btn onClick={() => setModal({ open: true, exam: null })}>
+            <Plus size={15} /> Planifier un examen
+          </Btn>
+        </div>
       </div>
 
       {/* ── Filtres ── */}
@@ -1554,6 +1757,7 @@ export default function ExamsPage() {
           exam={modal.exam}
           ues={ues}
           programs={programs}
+          rooms={rooms}
           onSave={() => {
             setModal({ open: false, exam: null });
             toast(modal.exam ? 'Examen mis à jour' : 'Examen créé avec succès');
@@ -1571,6 +1775,17 @@ export default function ExamsPage() {
         loading={deleting}
         title="Supprimer l'examen"
         message={`Êtes-vous sûr de vouloir supprimer "${deleteDialog.exam?.title}" ? Cette action est irréversible.`}
+      />
+
+      {/* ── Dialog Publication de l'horaire ── */}
+      <PublishScheduleDialog
+        isOpen={publishDialog}
+        onClose={() => setPublishDialog(false)}
+        programs={programs}
+        onSuccess={(data) => {
+          toast(`${data.published ?? 0} examen(s) publié(s) · ${data.notifications ?? 0} notification(s) envoyée(s)`, 'success');
+          loadExams();
+        }}
       />
     </div>
   );

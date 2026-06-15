@@ -44,8 +44,11 @@ const ASSESSMENT_TYPES = {
 
 // Sessions d'examen
 const EXAM_SESSIONS = {
-  SESSION1: 'session1',
-  SESSION2: 'session2'
+  SESSION1:   'session1',
+  SESSION2:   'session2',
+  RATTRAPAGE: 'rattrapage',   // ✅ ajout
+  MI_SESSION: 'mi_session',   // ✅ ajout
+  RECOURS:    'recours',      // ✅ ajout
 };
 
 // Mentions

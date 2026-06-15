@@ -226,9 +226,14 @@ export default function StudentExamsPage() {
     if (!user?._id) return;
     setLoading(true);
     try {
-      // isPublished: true → seuls les examens publiés par l'admin sont visibles
-      // Le backend filtre automatiquement selon le programme/promotion de l'étudiant via JWT
-      const params = { page, limit, isPublished: true, ...filters };
+      // Filtre par programme de l'étudiant pour ne voir que ses examens
+      const programId = user.program?._id || user.program;
+      const params = {
+        page, limit,
+        isPublished: true,
+        ...(programId ? { program: programId } : {}),
+        ...filters,
+      };
       Object.keys(params).forEach(k => (params[k] === '' || params[k] == null) && delete params[k]);
       const res = await examAPI.getAll(params);
       const data = res?.data?.data ?? res?.data ?? [];
@@ -239,7 +244,7 @@ export default function StudentExamsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?._id, page, limit, filters]);
+  }, [user?._id, user?.program, page, limit, filters]);
 
   useEffect(() => { loadExams(); }, [loadExams]);
 

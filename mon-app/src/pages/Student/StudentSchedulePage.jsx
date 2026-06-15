@@ -1,282 +1,296 @@
-import { useState } from 'react';
-import { Calendar } from 'lucide-react';
+// pages/Student/StudentSchedulePage.jsx
+import { useState, useEffect, useCallback } from 'react';
+import { Calendar, Clock, MapPin, BookOpen, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { scheduleAPI } from '../../services/services';
-import { Card, Badge, Spinner } from '../../components/common';
-import { useFetch } from '../../components/hooks/UseFetch';
 import { useAuth } from '../../components/context/AuthContext';
-import { DAYS } from '../../components/utils/Helpers';
 
-const COURSE_COLORS = [
-  { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-700' },
-  { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
-  { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' },
-  { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-700' },
-  { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', badge: 'bg-rose-100 text-rose-700' },
-  { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
-];
+// ─── Constants ────────────────────────────────────────────────────────────────
+const DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const DAYS_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+const WORK_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
-export default function StudentSchedulePage() {
-  const { user } = useAuth();
-  const [selectedDay, setSelectedDay] = useState(() => {
-    const d = new Date().getDay();
-    return d === 5 ? 6 : d; // Si vendredi, afficher samedi (univ alg)
-  });
+const TYPE_CFG = {
+  CM: { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', label: 'CM' },
+  TD: { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0', label: 'TD' },
+  TP: { bg: '#FFF7ED', color: '#C2410C', border: '#FED7AA', label: 'TP' },
+};
+const getTypeCfg = (t) => TYPE_CFG[t] || { bg: '#EEF2FF', color: '#4338CA', border: '#C7D2FE', label: t || '—' };
 
-  // Récupérer l'emploi du temps lié à la filière de l'étudiant
-  const { data, loading } = useFetch(() =>
-    scheduleAPI.getAll({ limit: 500 })
-  );
+const C = {
+  primary: '#4F46E5', primaryLight: '#EEF2FF',
+  gray50: '#F9FAFB', gray100: '#F3F4F6', gray200: '#E5E7EB',
+  gray300: '#D1D5DB', gray400: '#9CA3AF', gray500: '#6B7280',
+  gray600: '#4B5563', gray700: '#374151', gray900: '#111827', white: '#FFFFFF',
+};
 
-  const schedules = data?.data || data || [];
+const timeToMin  = (t) => { const [h, m] = (t || '00:00').split(':').map(Number); return h * 60 + m; };
+const fmtDuration = (s, e) => {
+  const diff = timeToMin(e) - timeToMin(s);
+  return diff >= 60 ? `${Math.floor(diff / 60)}h${diff % 60 > 0 ? diff % 60 : ''}` : `${diff}min`;
+};
+const getTodayDayOfWeek = () => {
+  const d = new Date().getDay();
+  return WORK_DAYS.includes(d) ? d : WORK_DAYS[0];
+};
 
-  // Grouper par jour
-  const byDay = {};
-  for (let i = 0; i <= 6; i++) byDay[i] = [];
-  schedules.forEach(s => {
-    if (byDay[s.dayOfWeek] !== undefined) byDay[s.dayOfWeek].push(s);
-  });
-
-  const WORK_DAYS = [0, 1, 2, 3, 4, 6]; // Dim-Jeu + Sam
-
-  const todaySchedules = (byDay[selectedDay] || [])
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
-
-  if (loading) return <div className="flex justify-center py-16"><Spinner size={36} /></div>;
-
+// ─── Session Card ─────────────────────────────────────────────────────────────
+function SessionCard({ s, isNow }) {
+  const cfg = getTypeCfg(s.course?.type);
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Mon Emploi du Temps</h1>
-        <p className="text-sm text-gray-500 mt-1">Planning hebdomadaire des cours</p>
-      </div>
-
-      {/* Day selector */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        {WORK_DAYS.map(day => {
-          const count = byDay[day]?.length || 0;
-          const isToday = new Date().getDay() === day;
-          return (
-            <button key={day} onClick={() => setSelectedDay(day)}
-              className={`flex-shrink-0 flex flex-col items-center px-4 py-3 rounded-2xl transition-all ${
-                selectedDay === day
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-white border border-gray-200 text-gray-600 hover:border-indigo-300'
-              }`}>
-              <span className="text-xs font-medium opacity-70">{['D', 'L', 'M', 'M', 'J', 'V', 'S'][day]}</span>
-              <span className="text-sm font-bold mt-0.5">{DAYS[day].substring(0, 3)}</span>
-              {count > 0 && (
-                <span className={`mt-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                  selectedDay === day ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
-                }`}>{count}</span>
-              )}
-              {isToday && selectedDay !== day && (
-                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full mt-1" />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Schedule for selected day */}
-      {todaySchedules.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Calendar size={48} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500 font-medium">Aucun cours ce jour</p>
-          <p className="text-gray-400 text-sm mt-1">Profitez de votre journée libre !</p>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {todaySchedules.map((s, i) => {
-            const colors = COURSE_COLORS[i % COURSE_COLORS.length];
-            const TYPE_LABELS = { CM: 'Cours Magistral', TD: 'Travaux Dirigés', TP: 'Travaux Pratiques' };
-            return (
-              <Card key={s._id} className={`p-5 border-l-4 ${colors.border}`}>
-                <div className={`flex items-start gap-4`}>
-                  {/* Time */}
-                  <div className="text-center min-w-[72px]">
-                    <p className={`text-lg font-bold ${colors.text}`}>{s.startTime}</p>
-                    <div className={`w-0.5 h-4 mx-auto my-1 ${colors.bg} border ${colors.border}`} />
-                    <p className="text-sm text-gray-400">{s.endTime}</p>
-                  </div>
-
-                  {/* Divider */}
-                  <div className={`w-0.5 self-stretch rounded-full ${colors.bg} border ${colors.border}`} />
-
-                  {/* Content */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <h3 className="font-bold text-gray-900">{s.course?.title || s.course?.code || '—'}</h3>
-                      <Badge className={colors.badge}>{s.course?.type || '—'}</Badge>
-                      {s.group && <Badge className="bg-gray-100 text-gray-600">Groupe {s.group}</Badge>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
-                      <span>📍 Salle: <strong className="text-gray-700">{s.room?.name || '—'}</strong></span>
-                      <span>👤 Prof: <strong className="text-gray-700">{s.teacher?.firstName} {s.teacher?.lastName}</strong></span>
-                      {s.course?.type && <span>📚 Type: <strong className="text-gray-700">{TYPE_LABELS[s.course.type] || s.course.type}</strong></span>}
-                      <span>📅 <strong className="text-gray-700">{s.semester}</strong></span>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+    <div style={{
+      display: 'flex', gap: 14,
+      background: isNow ? cfg.bg : C.white,
+      border: `1px solid ${isNow ? cfg.border : C.gray200}`,
+      borderLeft: `4px solid ${isNow ? cfg.color : C.gray300}`,
+      borderRadius: 10, padding: '13px 16px',
+      boxShadow: isNow ? `0 4px 16px ${cfg.border}` : '0 1px 4px rgba(0,0,0,.05)',
+      position: 'relative',
+    }}>
+      {isNow && (
+        <div style={{ position: 'absolute', top: 10, right: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.color, animation: 'pulse 1.5s infinite', display: 'inline-block' }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color }}>EN COURS</span>
         </div>
       )}
 
-      {/* Weekly overview */}
-      <Card className="p-5">
-        <h2 className="text-sm font-bold text-gray-800 mb-4">Vue hebdomadaire</h2>
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-          {WORK_DAYS.map(day => (
-            <div key={day} onClick={() => setSelectedDay(day)}
-              className={`p-3 rounded-xl cursor-pointer transition-all text-center ${
-                selectedDay === day ? 'bg-indigo-600 text-white' : 'bg-gray-50 hover:bg-gray-100'
-              }`}>
-              <p className={`text-xs font-medium ${selectedDay === day ? 'text-indigo-200' : 'text-gray-500'}`}>
-                {DAYS[day].substring(0, 3)}
-              </p>
-              <p className={`text-xl font-bold mt-1 ${selectedDay === day ? 'text-white' : 'text-gray-800'}`}>
-                {byDay[day]?.length || 0}
-              </p>
-              <p className={`text-xs ${selectedDay === day ? 'text-indigo-200' : 'text-gray-400'}`}>cours</p>
-            </div>
-          ))}
+      <div style={{ minWidth: 54, textAlign: 'center', paddingTop: 2 }}>
+        <p style={{ fontSize: 14, fontWeight: 800, color: isNow ? cfg.color : C.gray700, margin: 0, fontFamily: 'monospace' }}>{s.startTime}</p>
+        <div style={{ width: 1, height: 20, background: C.gray200, margin: '4px auto' }} />
+        <p style={{ fontSize: 12, color: C.gray400, margin: 0, fontFamily: 'monospace' }}>{s.endTime}</p>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: C.gray900, margin: 0 }}>
+            {s.course?.title || s.course?.code || 'Cours inconnu'}
+          </h3>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+            {cfg.label}
+          </span>
         </div>
-      </Card>
+        <p style={{ fontSize: 12, color: C.gray500, margin: 0 }}>
+          {s.course?.code && <span style={{ fontFamily: 'monospace', background: C.gray100, padding: '1px 5px', borderRadius: 4, marginRight: 6 }}>{s.course.code}</span>}
+          {fmtDuration(s.startTime, s.endTime)}
+        </p>
+        <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
+          {s.room && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: C.gray500 }}>
+              <MapPin size={12} color={C.gray400} />{s.room}
+            </span>
+          )}
+          {(s.teacher?.firstName || s.teacher?.lastName) && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: C.gray500 }}>
+              <Users size={12} color={C.gray400} />{s.teacher.firstName} {s.teacher.lastName}
+            </span>
+          )}
+          {s.group && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: C.gray500 }}>
+              <BookOpen size={12} color={C.gray400} />Groupe {s.group}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
+// ─── Week Overview Sidebar ────────────────────────────────────────────────────
+function WeekOverview({ byDay, activeDay, onSelectDay }) {
+  const today = new Date().getDay();
+  return (
+    <div style={{ background: C.white, border: `1px solid ${C.gray200}`, borderRadius: 12, padding: '14px 16px' }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: C.gray400, textTransform: 'uppercase', letterSpacing: '.08em', margin: '0 0 12px' }}>Semaine</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {WORK_DAYS.map(d => {
+          const count = byDay[d]?.length || 0;
+          const active = d === activeDay;
+          const isToday = d === today;
+          return (
+            <button key={d} onClick={() => onSelectDay(d)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 8, border: 'none', background: active ? C.primaryLight : 'transparent', cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: active ? 700 : 500, color: active ? C.primary : C.gray600 }}>
+                {isToday && <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.primary, display: 'inline-block' }} />}
+                {DAYS[d]}
+              </span>
+              {count > 0 ? (
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: active ? C.primary : C.gray100, color: active ? C.white : C.gray500 }}>
+                  {count}
+                </span>
+              ) : <span style={{ fontSize: 10, color: C.gray300 }}>—</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function StudentSchedulePage() {
+  const { user } = useAuth();
+  const [schedules, setSchedules] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState('');
+  const [activeDay, setActiveDay] = useState(getTodayDayOfWeek());
+  const [semester,  setSemester]  = useState('');
 
+  const loadSchedules = useCallback(async () => {
+    if (!user) return;
+    setLoading(true); setError('');
+    try {
+      const programId = user.program?._id || user.program;
+      const params = { limit: 500 };
+      if (programId) params.program  = programId;
+      if (semester)  params.semester = semester;
+      const res = await scheduleAPI.getAll(params);
+      const data = res?.data?.data ?? res?.data ?? [];
+      setSchedules(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur lors du chargement');
+    } finally { setLoading(false); }
+  }, [user, semester]);
 
+  useEffect(() => { loadSchedules(); }, [loadSchedules]);
 
+  const byDay = {};
+  WORK_DAYS.forEach(d => (byDay[d] = []));
+  schedules.forEach(s => { if (byDay[s.dayOfWeek] !== undefined) byDay[s.dayOfWeek].push(s); });
+  WORK_DAYS.forEach(d => byDay[d].sort((a, b) => timeToMin(a.startTime) - timeToMin(b.startTime)));
 
+  const now = new Date();
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+  const isNow = (s) => s.dayOfWeek === now.getDay() && timeToMin(s.startTime) <= currentMin && currentMin < timeToMin(s.endTime);
 
+  const todaySessions   = byDay[now.getDay()] || [];
+  const activeSessions  = byDay[activeDay] || [];
+  const totalHours      = schedules.reduce((acc, s) => acc + (timeToMin(s.endTime) - timeToMin(s.startTime)) / 60, 0);
 
+  const SEMESTERS = ['S1','S2','S3','S4','S5','S6','S7','S8'];
 
+  return (
+    <div style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", background: C.gray50, minHeight: '100vh', padding: '20px 24px' }}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+        .schedule-layout { display: grid; grid-template-columns: 1fr 220px; gap: 18px; align-items: start; }
+        @media (max-width: 768px) { .schedule-layout { grid-template-columns: 1fr; } .schedule-sidebar { order: -1; } }
+      `}</style>
 
+      {/* En-tête */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: C.gray900, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Calendar size={22} color={C.primary} /> Mon Emploi du Temps
+          </h1>
+          <p style={{ fontSize: 13, color: C.gray400, marginTop: 4 }}>
+            {schedules.length} séance{schedules.length !== 1 ? 's' : ''} · {totalHours.toFixed(0)}h/semaine
+            {user?.program?.name && ` · ${user.program.name}`}
+          </p>
+        </div>
+        <select value={semester} onChange={e => setSemester(e.target.value)} style={{ padding: '7px 11px', border: `1px solid ${C.gray200}`, borderRadius: 8, fontSize: 13, background: C.white, outline: 'none', cursor: 'pointer', color: C.gray700 }}>
+          <option value="">Tous les semestres</option>
+          {SEMESTERS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
 
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 22 }}>
+        {[
+          { label: 'Séances/semaine', value: schedules.length, icon: Calendar, color: C.primary,  bg: C.primaryLight },
+          { label: 'Heures/semaine',  value: `${totalHours.toFixed(0)}h`, icon: Clock, color: '#0891B2', bg: '#ECFEFF' },
+          { label: "Aujourd'hui",     value: todaySessions.length, icon: BookOpen, color: '#059669', bg: '#ECFDF5' },
+        ].map(({ label, value, icon: Icon, color, bg }) => (
+          <div key={label} style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.gray200}`, padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ fontSize: 22, fontWeight: 800, color, margin: 0 }}>{value}</p>
+                <p style={{ fontSize: 11, color: C.gray400, margin: '3px 0 0' }}>{label}</p>
+              </div>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon size={16} color={color} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
+      <div className="schedule-layout">
+        <div>
+          {/* Day selector */}
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 16 }}>
+            {WORK_DAYS.map(d => {
+              const count = byDay[d]?.length || 0;
+              const active = d === activeDay;
+              const isToday = d === now.getDay();
+              return (
+                <button key={d} onClick={() => setActiveDay(d)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '9px 16px', borderRadius: 10, border: `2px solid ${active ? C.primary : C.gray200}`, background: active ? C.primary : C.white, cursor: 'pointer', flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: active ? C.white : C.gray500, textTransform: 'uppercase', letterSpacing: '.05em' }}>{DAYS_SHORT[d]}</span>
+                  {count > 0 ? (
+                    <span style={{ fontSize: 11, fontWeight: 700, width: 20, height: 20, borderRadius: '50%', background: active ? 'rgba(255,255,255,.25)' : C.primaryLight, color: active ? C.white : C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{count}</span>
+                  ) : <span style={{ fontSize: 11, color: active ? 'rgba(255,255,255,.4)' : C.gray300 }}>—</span>}
+                  {isToday && <span style={{ width: 5, height: 5, borderRadius: '50%', background: active ? C.white : C.primary }} />}
+                </button>
+              );
+            })}
+          </div>
 
+          {/* Day title */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: C.gray900, margin: 0 }}>
+              {DAYS[activeDay]}
+              {activeDay === now.getDay() && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: C.primaryLight, color: C.primary, marginLeft: 8 }}>Aujourd'hui</span>}
+            </h2>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[
+                { onClick: () => { const i = WORK_DAYS.indexOf(activeDay); setActiveDay(WORK_DAYS[(i - 1 + WORK_DAYS.length) % WORK_DAYS.length]); }, Icon: ChevronLeft },
+                { onClick: () => { const i = WORK_DAYS.indexOf(activeDay); setActiveDay(WORK_DAYS[(i + 1) % WORK_DAYS.length]); }, Icon: ChevronRight },
+              ].map(({ onClick, Icon }) => (
+                <button key={Icon.displayName} onClick={onClick} style={{ width: 28, height: 28, borderRadius: 7, border: `1px solid ${C.gray200}`, background: C.white, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={14} color={C.gray500} />
+                </button>
+              ))}
+            </div>
+          </div>
 
+          {/* Sessions */}
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid #E0E7FF', borderTopColor: C.primary, animation: 'spin .7s linear infinite' }} />
+            </div>
+          ) : error ? (
+            <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 10, padding: '14px 16px', color: '#9F1239', fontSize: 13 }}>{error}</div>
+          ) : activeSessions.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 24px', background: C.white, borderRadius: 12, border: `1px solid ${C.gray200}` }}>
+              <Calendar size={36} color={C.gray300} style={{ marginBottom: 10 }} />
+              <p style={{ fontSize: 14, color: C.gray500, margin: 0 }}>Pas de cours ce jour</p>
+              <p style={{ fontSize: 12, color: C.gray400, marginTop: 6 }}>Profitez de votre journée libre !</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {activeSessions.map(s => <SessionCard key={s._id} s={s} isNow={isNow(s)} />)}
+            </div>
+          )}
+        </div>
 
+        {/* Sidebar */}
+        <div className="schedule-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <WeekOverview byDay={byDay} activeDay={activeDay} onSelectDay={setActiveDay} />
 
-
-
-
-
-
-
-// // pages/student/StudentSchedulePage.jsx
-// import { useState, useEffect } from 'react';
-// import { Calendar, Clock, MapPin, User, BookOpen } from 'lucide-react';
-// import { scheduleAPI } from '../../services/services';
-// import { useAuth } from '../../components/context/AuthContext';
-
-// // Composants UI locaux (simplifiés)
-// const Spinner = () => <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
-// const Badge = ({ children, className }) => <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>{children}</span>;
-// const Card = ({ children }) => <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">{children}</div>;
-
-// const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-// const WORK_DAYS = [0,1,2,3,4,5,6];
-// const COLORS = [
-//   'bg-indigo-50 border-indigo-200 text-indigo-700',
-//   'bg-emerald-50 border-emerald-200 text-emerald-700',
-//   'bg-amber-50 border-amber-200 text-amber-700',
-//   'bg-purple-50 border-purple-200 text-purple-700',
-//   'bg-rose-50 border-rose-200 text-rose-700',
-//   'bg-cyan-50 border-cyan-200 text-cyan-700',
-// ];
-
-// export default function StudentSchedulePage() {
-//   const { user } = useAuth();
-//   const [schedules, setSchedules] = useState([]);
-//   const [loading, setLoading] = useState(true);
-//   const [selectedDay, setSelectedDay] = useState(new Date().getDay() - 1); // ajuster selon décalage
-
-//   useEffect(() => {
-//     const load = async () => {
-//       try {
-//         const res = await scheduleAPI.getStudentSchedule();
-//         setSchedules(res.data?.data || []);
-//       } catch (err) {
-//         console.error(err);
-//       } finally {
-//         setLoading(false);
-//       }
-//     };
-//     if (user) load();
-//   }, [user]);
-
-//   const byDay = {};
-//   WORK_DAYS.forEach(d => byDay[d] = []);
-//   schedules.forEach(s => byDay[s.day]?.push(s));
-
-//   const todaySchedules = (byDay[selectedDay] || []).sort((a,b) => a.start.localeCompare(b.start));
-
-//   if (loading) return <Spinner />;
-
-//   return (
-//     <div className="space-y-6">
-//       <h1 className="text-2xl font-bold text-gray-900">Mon Emploi du Temps</h1>
-      
-//       {/* Sélecteur de jours */}
-//       <div className="flex gap-2 overflow-x-auto pb-2">
-//         {WORK_DAYS.map(day => {
-//           const count = byDay[day]?.length || 0;
-//           const isToday = new Date().getDay() - 1 === day;
-//           return (
-//             <button key={day} onClick={() => setSelectedDay(day)}
-//               className={`flex-shrink-0 flex flex-col items-center px-4 py-3 rounded-2xl transition-all ${
-//                 selectedDay === day ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:border-indigo-300'
-//               }`}>
-//               <span className="text-xs font-medium opacity-70">{['L','M','M','J','V','S','D'][day]}</span>
-//               <span className="text-sm font-bold mt-0.5">{DAYS[day].substring(0,3)}</span>
-//               {count > 0 && <span className="mt-1 text-xs px-1.5 py-0.5 rounded-full bg-white/20 text-white">{count}</span>}
-//               {isToday && selectedDay !== day && <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full mt-1" />}
-//             </button>
-//           );
-//         })}
-//       </div>
-
-//       {/* Séances du jour */}
-//       {todaySchedules.length === 0 ? (
-//         <Card className="p-12 text-center">
-//           <Calendar className="mx-auto text-gray-300 mb-4" size={48} />
-//           <p className="text-gray-500">Aucun cours ce jour</p>
-//         </Card>
-//       ) : (
-//         <div className="space-y-4">
-//           {todaySchedules.map((s, i) => {
-//             const colorClass = COLORS[i % COLORS.length];
-//             return (
-//               <Card key={s._id} className={`p-5 border-l-4 ${colorClass}`}>
-//                 <div className="flex items-start gap-4">
-//                   <div className="text-center min-w-[72px]">
-//                     <p className="text-lg font-bold">{s.start}</p>
-//                     <div className="w-0.5 h-4 mx-auto my-1 bg-gray-200" />
-//                     <p className="text-sm text-gray-400">{s.end}</p>
-//                   </div>
-//                   <div className="flex-1">
-//                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-//                       <h3 className="font-bold text-gray-900">{s.course}</h3>
-//                       <Badge className="bg-gray-100 text-gray-600">{s.semester}</Badge>
-//                       {s.group && <Badge className="bg-gray-100 text-gray-600">Groupe {s.group}</Badge>}
-//                     </div>
-//                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
-//                       <span><MapPin size={12} className="inline mr-1" /> {s.room || '—'}</span>
-//                       <span><User size={12} className="inline mr-1" /> {s.teacher}</span>
-//                       <span><BookOpen size={12} className="inline mr-1" /> {s.program || 'Tronc commun'}</span>
-//                     </div>
-//                   </div>
-//                 </div>
-//               </Card>
-//             );
-//           })}
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
+          <div style={{ background: C.white, border: `1px solid ${C.gray200}`, borderRadius: 12, padding: '14px 16px' }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: C.gray400, textTransform: 'uppercase', letterSpacing: '.08em', margin: '0 0 10px' }}>Types de cours</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {Object.entries(TYPE_CFG).map(([type, cfg]) => (
+                <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: cfg.bg, border: `1.5px solid ${cfg.color}`, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{type}</span>
+                  <span style={{ fontSize: 11, color: C.gray400 }}>
+                    {type === 'CM' ? 'Cours Magistral' : type === 'TD' ? 'Travaux Dirigés' : 'Travaux Pratiques'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

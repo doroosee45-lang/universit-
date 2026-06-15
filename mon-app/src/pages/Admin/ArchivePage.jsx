@@ -328,10 +328,31 @@ export default function ArchivePage() {
   };
 
   const loadSavedArchives = async () => {
-    // Load from localStorage (simulating a persistent store until backend endpoint exists)
     try {
-      const saved = localStorage.getItem('university_archives');
-      if (saved) setArchives(JSON.parse(saved));
+      // Archives principales
+      const saved = JSON.parse(localStorage.getItem('university_archives') || '[]');
+      // Documents officiels générés depuis DiplomasPage (fusion sans doublons)
+      const docs = JSON.parse(localStorage.getItem('omedev_documents') || '[]');
+      const docArchives = docs.map(d => ({
+        id: d.id || `doc_${Date.now()}`,
+        type: 'diplomes',
+        label: { diplomas: 'Diplôme', transcripts: 'Relevé de notes', attestations: 'Attestation' }[d.type] || 'Document',
+        name: `${d.type === 'diplomas' ? 'Diplôme' : d.type === 'transcripts' ? 'Relevé de notes' : 'Attestation'} — ${d.studentName || ''}`,
+        date: d.generatedAt || new Date().toISOString(),
+        size: 50000,
+        items: 1,
+        academicYear: d.academicYear || '',
+        programName: d.student?.program?.name || '',
+        status: 'archived',
+        archivedBy: 'admin',
+        retentionPeriod: 'permanent',
+        metadata: { source: 'document_generation', docType: d.type, studentId: d.studentId }
+      }));
+      // Fusionner : les archives principales peuvent déjà contenir les docs (via pushToArchive)
+      // On déduplique par id
+      const allIds = new Set(saved.map(a => a.id));
+      const newDocs = docArchives.filter(d => !allIds.has(d.id));
+      setArchives([...saved, ...newDocs]);
     } catch { /* ignore */ }
   };
 
@@ -538,13 +559,14 @@ export default function ArchivePage() {
   const storageLimit = 50 * 1024 * 1024 * 1024;
 
   const typeColors = {
-    students: { color: '#4F46E5', bg: '#EEF2FF', label: 'Étudiants' },
-    teachers: { color: '#10B981', bg: '#D1FAE5', label: 'Enseignants' },
-    grades: { color: '#14B8A6', bg: '#CCFBF1', label: 'Notes' },
-    fees: { color: '#F97316', bg: '#FFEDD5', label: 'Frais' },
-    attendance: { color: '#3B82F6', bg: '#DBEAFE', label: 'Présences' },
-    programs: { color: '#8B5CF6', bg: '#F3E8FF', label: 'Filières' },
-    academicYear: { color: '#EC4899', bg: '#FCE7F3', label: 'Années' },
+    students:    { color: '#4F46E5', bg: '#EEF2FF', label: 'Étudiants' },
+    teachers:    { color: '#10B981', bg: '#D1FAE5', label: 'Enseignants' },
+    grades:      { color: '#14B8A6', bg: '#CCFBF1', label: 'Notes' },
+    fees:        { color: '#F97316', bg: '#FFEDD5', label: 'Frais' },
+    attendance:  { color: '#3B82F6', bg: '#DBEAFE', label: 'Présences' },
+    programs:    { color: '#8B5CF6', bg: '#F3E8FF', label: 'Filières' },
+    academicYear:{ color: '#EC4899', bg: '#FCE7F3', label: 'Années' },
+    diplomes:    { color: '#F59E0B', bg: '#FEF3C7', label: 'Documents officiels' },
   };
 
   const tabs = [
@@ -596,6 +618,7 @@ export default function ArchivePage() {
           { label: 'Étudiants actifs', value: loading ? '…' : dataStats.students, icon: GraduationCap, color: '#4F46E5', bg: '#EEF2FF' },
           { label: 'Enseignants', value: loading ? '…' : dataStats.teachers, icon: Users, color: '#10B981', bg: '#D1FAE5' },
           { label: 'Notes enregistrées', value: loading ? '…' : dataStats.grades, icon: BookOpen, color: '#14B8A6', bg: '#CCFBF1' },
+          { label: 'Documents officiels', value: archives.filter(a => a.type === 'diplomes').length, icon: FileText, color: '#F59E0B', bg: '#FEF3C7' },
           { label: 'Archives créées', value: archives.length, icon: Archive, color: '#8B5CF6', bg: '#F3E8FF' },
           { label: 'Stockage utilisé', value: formatFileSize(totalSize), icon: HardDrive, color: '#F97316', bg: '#FFEDD5' },
         ].map((s, i) => (

@@ -1,4 +1,4 @@
-// pages/student/StudentHomeworkPage.jsx — version corrigée
+﻿// pages/student/StudentHomeworkPage.jsx — version corrigée
 import { useState, useEffect, useCallback } from 'react';
 import { Upload, FileText, Clock, CheckCircle, X, RefreshCw } from 'lucide-react';
 import { api } from '../../services/services';
@@ -426,7 +426,7 @@ export default function StudentHomeworkPage() {
               <h3 className="font-bold text-gray-900">{viewModal.assignment.title}</h3>
               <p className="text-sm text-gray-600 mt-2">{viewModal.assignment.description || 'Aucune description fournie.'}</p>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               {[
                 ['Cours', viewModal.assignment.course?.title || '—'],
                 ['Type', TYPE_LABELS[viewModal.assignment.type] || viewModal.assignment.type],

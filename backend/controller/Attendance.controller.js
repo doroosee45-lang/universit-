@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Attendance = require('../models/Attendance.model');
 const Course = require('../models/Course.model');
 const Student = require('../models/Student.model');
@@ -118,8 +119,11 @@ const justifyAbsence = async (req, res, next) => {
 // GET /api/attendance/course/:courseId/stats  - Stats présence par cours
 const getCourseAttendanceStats = async (req, res, next) => {
   try {
+    // ✅ FIX : utiliser 'new mongoose.Types.ObjectId()' au lieu de 'ObjectId()'
+    const courseObjectId = new mongoose.Types.ObjectId(req.params.courseId);
+
     const stats = await Attendance.aggregate([
-      { $match: { course: require('mongoose').Types.ObjectId(req.params.courseId) } },
+      { $match: { course: courseObjectId } },
       {
         $group: {
           _id: '$student',
@@ -132,7 +136,9 @@ const getCourseAttendanceStats = async (req, res, next) => {
       },
       {
         $addFields: {
-          attendanceRate: { $multiply: [{ $divide: ['$present', '$total'] }, 100] }
+          attendanceRate: {
+            $multiply: [{ $divide: ['$present', { $max: ['$total', 1] }] }, 100]
+          }
         }
       },
       { $sort: { attendanceRate: -1 } }

@@ -1,5 +1,3 @@
-
-
 const express = require('express');
 const router = express.Router();
 
@@ -21,8 +19,9 @@ const dashboardRoutes    = require('./dashboardRoutes');
 const deliberationRoutes = require('./deliberationRoutes');
 const staffRoutes        = require('./staffRoutes');
 const assignmentRoutes   = require('./assignmentRoutes');
+const juryRoutes         = require('./juryRoutes'); // ✅ plus de './routes/' ici
+const roomRoutes         = require('./Room.routes');
 
-// Misc.routes exporte { settingsRouter, notifRouter } — on destructure
 const { settingsRouter, notifRouter } = require('./Misc.routes');
 
 // ─── Health check ─────────────────────────────────────────────────────────────
@@ -45,11 +44,13 @@ router.use('/exams',          examRoutes);
 router.use('/library',        libraryRoutes);
 router.use('/internships',    internshipRoutes);
 router.use('/reports',        reportRoutes);
-router.use('/settings',       settingsRouter);   // ✅ une seule fois, depuis Misc.routes
+router.use('/settings',       settingsRouter);
 router.use('/notifications',  notifRouter);
 router.use('/dashboard',      dashboardRoutes);
 router.use('/deliberations',  deliberationRoutes);
 router.use('/staff',          staffRoutes);
 router.use('/assignments',    assignmentRoutes);
+router.use('/jury',           juryRoutes);
+router.use('/rooms',          roomRoutes);
 
 module.exports = router;

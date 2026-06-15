@@ -2,9 +2,11 @@ const { forbidden } = require('../utils/apiResponse');
 const { ROLES } = require('../config/constants');
 
 // Vérifie que l'utilisateur a l'un des rôles autorisés
+// super_admin bypass toujours toutes les restrictions de rôle
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user) return forbidden(res, 'Non authentifié.');
+    if (req.user.role === 'super_admin') return next();
     if (!roles.includes(req.user.role)) {
       return forbidden(res, `Rôle "${req.user.role}" non autorisé pour cette action.`);
     }

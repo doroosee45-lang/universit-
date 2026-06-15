@@ -1,4 +1,4 @@
-// pages/student/StudentCoursesPage.jsx
+﻿// pages/student/StudentCoursesPage.jsx
 import { useState, useMemo } from 'react';
 import { BookOpen, Users, Clock, Search, X, GraduationCap, ChevronRight, Filter, Layers } from 'lucide-react';
 import { courseAPI } from '../../services/services';
@@ -220,7 +220,7 @@ export default function StudentCoursesPage() {
 
           {/* ── Stats rapides ─────────────────────────────────────────────── */}
           {!loading && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <StatCard
                 label="Cours Magistraux"
                 value={countByType('CM')}

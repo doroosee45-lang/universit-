@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { BookOpen, Calendar, DollarSign, Bell, ClipboardList, Clock } from 'lucide-react';
 import { dashboardAPI } from '../../services/services';
 import { StatCard, Card, Badge, Spinner } from '../../components/common';
@@ -106,7 +106,7 @@ export default function StudentDashboard() {
       {fee && (
         <Card className="p-5">
           <h2 className="text-sm font-bold text-gray-800 mb-4">État des frais de scolarité</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               ['Total', formatCurrency(fee.totalAmount), 'text-gray-800'],
               ['Payé', formatCurrency(fee.paidAmount), 'text-green-600'],

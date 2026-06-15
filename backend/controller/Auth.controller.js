@@ -5,9 +5,8 @@ const Student = require('../models/Student.model');
 const Program = require('../models/Program.model');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email.service');
 const { success, created, error, unauthorized, badRequest } = require('../utils/apiResponse');
-const { generateToken } = require('../utils/helpers');
+const { generateToken, getCurrentAcademicYear } = require('../utils/helpers');
 
-// Générer un JWT
 const signToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d'
@@ -43,20 +42,17 @@ const register = async (req, res, next) => {
           level: 'Licence',
           durationYears: 3,
           department: 'Général',
-          academicYear: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1)
+          academicYear: getCurrentAcademicYear()
         });
       }
-
       userData.program = defaultProgram._id;
       userData.level = 'L1';
       userData.currentSemester = 'S1';
       userData.academicYear = new Date().getFullYear() + '-' + (new Date().getFullYear() + 1);
       userData.enrollmentDate = new Date();
-      // ✅ studentId sera auto-généré par le pre-save hook dans Student.model.js
     }
 
     const user = await User.create(userData);
-
     await sendVerificationEmail(user, verificationToken);
     return created(res, { id: user._id, email: user.email }, 'Compte créé. Vérifiez votre email.');
   } catch (err) {
@@ -69,23 +65,17 @@ const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
-
-    console.log('Email reçu:', email);
-    console.log('Utilisateur trouvé:', user ? user.email : 'NON');
+    const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil +mustChangePassword');
 
     if (!user) return unauthorized(res, 'Email ou mot de passe incorrect.');
 
-    if (user.isLocked === true) {
-      console.log('Compte verrouillé jusqu\'au:', user.lockUntil);
+    if (user.isLocked) {
       return unauthorized(res, 'Compte temporairement verrouillé. Réessayez dans 2 heures.');
     }
 
     if (!user.isActive) return unauthorized(res, 'Compte désactivé. Contactez l\'administration.');
 
     const isMatch = await user.comparePassword(password);
-    console.log('Mot de passe valide:', isMatch);
-
     if (!isMatch) {
       await user.incLoginAttempts();
       return unauthorized(res, 'Email ou mot de passe incorrect.');
@@ -96,17 +86,18 @@ const login = async (req, res, next) => {
     const token = signToken(user._id, user.role);
     return success(res, {
       token,
+      mustChangePassword: user.mustChangePassword || false,
       user: {
         _id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
         role: user.role,
-        profilePhoto: user.profilePhoto
+        profilePhoto: user.profilePhoto,
+        mustChangePassword: user.mustChangePassword || false
       }
     }, 'Connexion réussie.');
   } catch (err) {
-    console.error('Erreur login:', err);
     next(err);
   }
 };
@@ -183,6 +174,80 @@ const verifyEmail = async (req, res, next) => {
   }
 };
 
+// GET /api/auth/activate-account/:token
+// Utilisé par les étudiants créés par l'admin via le lien reçu par email
+const activateAccount = async (req, res, next) => {
+  try {
+    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+    const user = await User.findOne({
+      activationToken: hashedToken,
+      activationTokenExpires: { $gt: Date.now() }
+    }).select('+activationToken +activationTokenExpires +mustChangePassword');
+
+    if (!user) return badRequest(res, 'Lien d\'activation invalide ou expiré. Contactez l\'administration.');
+
+    if (!user.isActive) return unauthorized(res, 'Compte désactivé. Contactez l\'administration.');
+
+    // Marquer le compte comme vérifié et vider le token
+    user.isEmailVerified = true;
+    user.activationToken = undefined;
+    user.activationTokenExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    const token = signToken(user._id, user.role);
+    return success(res, {
+      token,
+      mustChangePassword: true,
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto,
+        mustChangePassword: true
+      }
+    }, 'Compte activé. Veuillez définir votre mot de passe personnel.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/force-change-password
+// Utilisé après activation ou lors du premier login avec mot de passe temporaire
+const forceChangePassword = async (req, res, next) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) {
+      return badRequest(res, 'Le mot de passe doit contenir au moins 8 caractères.');
+    }
+
+    const user = await User.findById(req.user._id).select('+password +mustChangePassword');
+    if (!user) return unauthorized(res, 'Utilisateur introuvable.');
+
+    user.password = newPassword;
+    user.mustChangePassword = false;
+    await user.save();
+
+    const token = signToken(user._id, user.role);
+    return success(res, {
+      token,
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto,
+        mustChangePassword: false
+      }
+    }, 'Mot de passe mis à jour avec succès.');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // PUT /api/auth/change-password
 const changePassword = async (req, res, next) => {
   try {
@@ -201,4 +266,14 @@ const changePassword = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getMe, forgotPassword, resetPassword, verifyEmail, changePassword };
+module.exports = {
+  register,
+  login,
+  getMe,
+  forgotPassword,
+  resetPassword,
+  verifyEmail,
+  activateAccount,
+  forceChangePassword,
+  changePassword
+};

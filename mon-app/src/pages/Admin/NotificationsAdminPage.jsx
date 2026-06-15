@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Send, Trash2, Bell, Users, GraduationCap } from 'lucide-react';
 import { notificationAPI } from '../../services/services';
 import {
@@ -61,7 +61,7 @@ function SendNotifModal({ onSave, onCancel }) {
           placeholder="Contenu de la notification..."
           className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select label="Type" value={form.type} onChange={e => set('type', e.target.value)} options={TYPE_OPTS} />
         <Select label="Destinataires" value={form.recipientRole} onChange={e => set('recipientRole', e.target.value)} options={ROLE_OPTS} />
       </div>

@@ -6,12 +6,19 @@ const { authorize } = require('../middleware/Role.middleware');
 
 router.use(protect);
 
-router.get('/', ctrl.getAllExams);
-router.get('/:id', ctrl.getExamById);
-router.get('/:id/results', ctrl.getExamResults);
-router.post('/', authorize('admin', 'staff'), ctrl.createExam);
-router.put('/:id', authorize('admin', 'staff'), ctrl.updateExam);
-router.delete('/:id', authorize('admin'), ctrl.deleteExam);
-router.post('/:id/publish', authorize('admin', 'teacher'), ctrl.publishResults);
+// ✅ Routes statiques EN PREMIER (avant /:id)
+router.get( '/teacher/me',       authorize('admin', 'teacher', 'super_admin'), ctrl.getTeacherExams);
+router.post('/publish-schedule', authorize('admin', 'super_admin'),            ctrl.publishSchedule);
+
+// Routes générales
+router.get('/',    ctrl.getAllExams);
+router.post('/',   authorize('admin', 'staff', 'super_admin'), ctrl.createExam);
+
+// ✅ Routes avec :id EN DERNIER
+router.get('/:id',           ctrl.getExamById);
+router.get('/:id/results',   ctrl.getExamResults);
+router.put('/:id',           authorize('admin', 'staff', 'super_admin'), ctrl.updateExam);
+router.delete('/:id',        authorize('admin', 'super_admin'), ctrl.deleteExam);
+router.post('/:id/publish',  authorize('admin', 'teacher', 'super_admin'), ctrl.publishResults);
 
 module.exports = router;

@@ -1,123 +1,109 @@
 const Staff = require('../models/Staff');
 
-// Récupérer tous les staffs avec pagination et recherche
+// GET /api/staff
 exports.getAllStaff = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const page   = parseInt(req.query.page)  || 1;
+    const limit  = parseInt(req.query.limit) || 20;
     const search = req.query.search || '';
-    
-    const skip = (page - 1) * limit;
-    
-    // Construire la requête de recherche
-    let query = {};
+    const skip   = (page - 1) * limit;
+
+    const query = {};
     if (search) {
-      query = {
-        $or: [
-          { firstName: { $regex: search, $options: 'i' } },
-          { lastName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-        ]
-      };
+      query.$or = [
+        { firstName:  { $regex: search, $options: 'i' } },
+        { lastName:   { $regex: search, $options: 'i' } },
+        { email:      { $regex: search, $options: 'i' } },
+        { department: { $regex: search, $options: 'i' } },
+      ];
     }
-    
+
     const [staff, total] = await Promise.all([
-      Staff.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Staff.countDocuments(query)
+      Staff.find(query).select('-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Staff.countDocuments(query),
     ]);
-    
+
     res.json({
       success: true,
-      data: staff,
+      data:    staff,
       total,
       page,
-      pages: Math.ceil(total / limit),
+      pages:   Math.ceil(total / limit),
     });
-  } catch (error) {
-    console.error('Erreur getAllStaff:', error);
-    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  } catch (err) {
+    console.error('[getAllStaff]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Récupérer un staff par ID
+// GET /api/staff/:id
 exports.getStaffById = async (req, res) => {
   try {
-    const staff = await Staff.findById(req.params.id);
-    if (!staff) {
-      return res.status(404).json({ message: 'Personnel non trouvé' });
-    }
+    const staff = await Staff.findById(req.params.id).select('-password');
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel non trouvé' });
     res.json({ success: true, data: staff });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  } catch (err) {
+    console.error('[getStaffById]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Créer un nouveau staff
+// POST /api/staff
 exports.createStaff = async (req, res) => {
   try {
     const { email } = req.body;
-    
-    // Vérifier si l'email existe déjà
-    const existingStaff = await Staff.findOne({ email });
-    if (existingStaff) {
-      return res.status(400).json({ message: 'Cet email est déjà utilisé' });
-    }
-    
-    const staff = new Staff(req.body);
-    await staff.save();
-    
-    // Ne pas renvoyer le mot de passe
+
+    const exists = await Staff.findOne({ email: email?.toLowerCase() });
+    if (exists) return res.status(400).json({ success: false, message: 'Cet email est déjà utilisé' });
+
+    const staff = await Staff.create({
+      ...req.body,
+      role:     'staff',
+      password: req.body.password || 'Staff@123',
+    });
+
     const staffData = staff.toObject();
     delete staffData.password;
-    
-    res.status(201).json({ success: true, data: staffData });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la création', error: error.message });
+
+    res.status(201).json({ success: true, data: staffData, message: 'Personnel créé avec succès' });
+  } catch (err) {
+    console.error('[createStaff]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Mettre à jour un staff
+// PUT /api/staff/:id
 exports.updateStaff = async (req, res) => {
   try {
-    const { id } = req.params;
-    const updates = req.body;
-    
-    // Si le mot de passe est fourni, il sera hashé automatiquement par le pre-save
-    const staff = await Staff.findById(id);
-    if (!staff) {
-      return res.status(404).json({ message: 'Personnel non trouvé' });
-    }
-    
-    // Mettre à jour les champs
-    Object.keys(updates).forEach(key => {
-      if (key !== '_id' && key !== '__v') {
-        staff[key] = updates[key];
-      }
-    });
-    
+    // Ne jamais modifier le mot de passe via cette route (sécurité)
+    delete req.body.password;
+    delete req.body._id;
+    delete req.body.__v;
+
+    const staff = await Staff.findById(req.params.id);
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel non trouvé' });
+
+    Object.assign(staff, req.body);
     await staff.save();
-    
+
     const staffData = staff.toObject();
     delete staffData.password;
-    
-    res.json({ success: true, data: staffData });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la mise à jour', error: error.message });
+
+    res.json({ success: true, data: staffData, message: 'Personnel mis à jour' });
+  } catch (err) {
+    console.error('[updateStaff]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Supprimer un staff
+// DELETE /api/staff/:id
 exports.deleteStaff = async (req, res) => {
   try {
     const staff = await Staff.findByIdAndDelete(req.params.id);
-    if (!staff) {
-      return res.status(404).json({ message: 'Personnel non trouvé' });
-    }
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel non trouvé' });
     res.json({ success: true, message: 'Personnel supprimé avec succès' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la suppression', error: error.message });
+  } catch (err) {
+    console.error('[deleteStaff]', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };

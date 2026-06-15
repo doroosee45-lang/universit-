@@ -2,7 +2,6 @@
 const Company = require('../models/Company.model');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/apiResponse');
 
-
 // INTERNSHIPS
 exports.getAllInternships = async (req, res) => {
   try {
@@ -17,7 +16,7 @@ exports.getAllInternships = async (req, res) => {
     const internships = await Internship.find(filter)
       .populate('student', 'firstName lastName matricule')
       .populate('company', 'name sector')
-      .populate('supervisor', 'firstName lastName')
+      .populate('academicTutor', 'firstName lastName')
       .skip((page - 1) * limit)
       .limit(Number(limit))
       .sort({ startDate: -1 });
@@ -31,7 +30,7 @@ exports.getAllInternships = async (req, res) => {
 exports.getInternshipById = async (req, res) => {
   try {
     const internship = await Internship.findById(req.params.id)
-      .populate('student company supervisor');
+      .populate('student company academicTutor');
     if (!internship) return errorResponse(res, 'Stage introuvable', 404);
     return successResponse(res, internship);
   } catch (err) {
@@ -42,7 +41,7 @@ exports.getInternshipById = async (req, res) => {
 exports.createInternship = async (req, res) => {
   try {
     const internship = await Internship.create(req.body);
-    return successResponse(res, internship, 'Stage crÃ©Ã©', 201);
+    return successResponse(res, internship, 'Stage créé', 201);
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -52,7 +51,7 @@ exports.updateInternship = async (req, res) => {
   try {
     const internship = await Internship.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!internship) return errorResponse(res, 'Stage introuvable', 404);
-    return successResponse(res, internship, 'Stage mis Ã  jour');
+    return successResponse(res, internship, 'Stage mis à jour');
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -61,7 +60,7 @@ exports.updateInternship = async (req, res) => {
 exports.deleteInternship = async (req, res) => {
   try {
     await Internship.findByIdAndDelete(req.params.id);
-    return successResponse(res, null, 'Stage supprimÃ©');
+    return successResponse(res, null, 'Stage supprimé');
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -90,7 +89,7 @@ exports.getAllCompanies = async (req, res) => {
 exports.createCompany = async (req, res) => {
   try {
     const company = await Company.create(req.body);
-    return successResponse(res, company, 'Entreprise ajoutÃ©e', 201);
+    return successResponse(res, company, 'Entreprise ajoutée', 201);
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -100,7 +99,7 @@ exports.updateCompany = async (req, res) => {
   try {
     const company = await Company.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!company) return errorResponse(res, 'Entreprise introuvable', 404);
-    return successResponse(res, company, 'Entreprise mise Ã  jour');
+    return successResponse(res, company, 'Entreprise mise à jour');
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -109,7 +108,7 @@ exports.updateCompany = async (req, res) => {
 exports.deleteCompany = async (req, res) => {
   try {
     await Company.findByIdAndDelete(req.params.id);
-    return successResponse(res, null, 'Entreprise supprimÃ©e');
+    return successResponse(res, null, 'Entreprise supprimée');
   } catch (err) {
     return errorResponse(res, err.message);
   }

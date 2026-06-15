@@ -1,4 +1,4 @@
-// pages/admin/GradesPage.jsx  — version corrigée & complète
+﻿// pages/admin/GradesPage.jsx  — version corrigée & complète
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Download, Save, Search, X, ChevronLeft, ChevronRight,
@@ -19,8 +19,10 @@ const extractTotal = (res, list) =>
   res?.total ?? res?.count ?? res?.data?.total ?? list.length;
 
 const getCurrentAcademicYear = () => {
-  const y = new Date().getFullYear();
-  return `${y}-${y + 1}`;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  return m >= 9 ? (y + '-' + (y + 1)) : ((y - 1) + '-' + y);
 };
 
 const getMention = (avg) => {
@@ -314,7 +316,7 @@ function StepSelector({ ues, onNext, onCancel }) {
     <div className="space-y-4">
       <p className="text-sm text-gray-500">Choisissez l'UE, le semestre et la session avant de saisir les notes.</p>
       <Select label="UE" value={sel.ue} onChange={e => setSel(p => ({ ...p, ue: e.target.value }))} options={ueOpts}/>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Semestre" value={sel.semester} onChange={e => setSel(p => ({ ...p, semester: e.target.value }))} options={semOpts}/>
         <Select label="Session"  value={sel.session}  onChange={e => setSel(p => ({ ...p, session:  e.target.value }))} options={sesOpts}/>
       </div>
@@ -490,7 +492,7 @@ export default function GradesPage() {
           </div>
 
           {/* ── Stats rapides ──────────────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { label: 'UE chargées',     value: ues.length,      color: 'bg-blue-50 text-blue-700 border-blue-200',   icon: BookOpen   },
               { label: 'Étudiants',       value: students.length, color: 'bg-violet-50 text-violet-700 border-violet-200', icon: Users },

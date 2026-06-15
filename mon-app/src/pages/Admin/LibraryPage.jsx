@@ -1,4 +1,4 @@
-// // pages/admin/LibraryPage.jsx
+﻿// // pages/admin/LibraryPage.jsx
 // import { useState, useEffect, useCallback } from 'react';
 // import { Plus, Edit, Trash2, BookOpen, RotateCcw, Search, X, User, Calendar, FileText, Download } from 'lucide-react';
 // import { libraryAPI } from '../../services/services';
@@ -318,7 +318,7 @@
   
 //   return (
 //     <div style={{ overflowX: 'auto' }}>
-//       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+//       <div class="overflow-x-auto"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
 //         <thead>
 //           <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #F3F4F6' }}>
 //             {columns.map(col => (
@@ -339,7 +339,7 @@
 //             </tr>
 //           ))}
 //         </tbody>
-//       </table>
+//       </table></div>
 //     </div>
 //   );
 // }
@@ -856,7 +856,7 @@
 //               />
 //             </div>
 //           </div>
-//           <Table columns={bookColumns} data={books} loading={loading} emptyText="Aucun livre trouvé" />
+//           <div class="overflow-x-auto"><table columns={bookColumns} data={books} loading={loading} emptyText="Aucun livre trouvé" />
 //           <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
 //         </Card>
 //       )}
@@ -864,14 +864,14 @@
 //       {/* Loans Tab */}
 //       {tab === 'loans' && (
 //         <Card>
-//           <Table columns={loanColumns} data={loans} loading={loadingLoans} emptyText="Aucun emprunt actif" />
+//           <div class="overflow-x-auto"><table columns={loanColumns} data={loans} loading={loadingLoans} emptyText="Aucun emprunt actif" />
 //         </Card>
 //       )}
 
 //       {/* Overdue Tab */}
 //       {tab === 'overdue' && (
 //         <Card>
-//           <Table columns={loanColumns} data={overdueLoans} loading={false} emptyText="Aucun retard" />
+//           <div class="overflow-x-auto"><table columns={loanColumns} data={overdueLoans} loading={false} emptyText="Aucun retard" />
 //         </Card>
 //       )}
 
@@ -1244,7 +1244,7 @@ function Table({ columns, data, loading, emptyText = 'Aucun résultat' }) {
   if (!data?.length) return <div style={{ padding: 48, textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>{emptyText}</div>;
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div class="overflow-x-auto"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #F3F4F6' }}>
             {columns.map(c => (
@@ -1267,7 +1267,7 @@ function Table({ columns, data, loading, emptyText = 'Aucun résultat' }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

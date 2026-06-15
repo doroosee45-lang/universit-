@@ -1,4 +1,4 @@
-
+﻿
 
 // TeacherAssignmentsPage.jsx - version complète et autonome// TeacherAssignmentsPage.jsx - version stable, sans boucle infinie
 import { useState, useEffect, useCallback } from 'react';
@@ -199,15 +199,15 @@ function AssignmentForm({ assignment, courses, ues, onSave, onCancel }) {
         <textarea value={form.description} onChange={e => setField('description', e.target.value)} rows={3}
           className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select label="Cours" value={form.course} onChange={e => setField('course', e.target.value)} options={courseOpts} />
         <Select label="UE" value={form.ue} onChange={e => setField('ue', e.target.value)} options={ueOpts} />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select label="Type" value={form.type} onChange={e => setField('type', e.target.value)} options={TYPE_OPTS} />
         <Input label="Date limite" type="datetime-local" value={form.dueDate?.substring(0, 16)} onChange={e => setField('dueDate', e.target.value)} required />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Note max" type="number" min="0" max="20" value={form.maxScore} onChange={e => setField('maxScore', +e.target.value)} />
         <Input label="Poids CC (%)" type="number" min="0" max="100" value={form.weight} onChange={e => setField('weight', +e.target.value)} />
       </div>

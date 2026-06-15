@@ -52,28 +52,53 @@ exports.exportTranscriptPDF = async (req, res) => {
   }
 };
 
-// Rapport absences
+// ✅ FIX - Rapport absences
+// Problème : r.student pouvait être null si l'étudiant est supprimé → crash sur r.student._id
 exports.getAttendanceReport = async (req, res) => {
   try {
-    const { program, course, startDate, endDate } = req.query;
+    const { program, course, startDate, endDate, academicYear } = req.query;
     const filter = {};
     if (course) filter.course = course;
-    if (startDate && endDate) filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    if (startDate && endDate) {
+      filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    }
+    // Filtre par année académique si fourni (via le champ sur le modèle si disponible)
+    if (academicYear) filter.academicYear = academicYear;
 
     const records = await Attendance.find(filter)
       .populate('student', 'firstName lastName matricule')
-      .populate('course', 'name code');
+      .populate('course', 'name code title');
 
     const summary = {};
     records.forEach(r => {
+      // ✅ FIX CRITIQUE : vérifier que student existe avant d'accéder à _id
+      if (!r.student) return;
+
       const id = r.student._id.toString();
-      if (!summary[id]) summary[id] = { student: r.student, total: 0, absent: 0, late: 0 };
+      if (!summary[id]) {
+        summary[id] = {
+          student: r.student,
+          total: 0,
+          present: 0,
+          absent: 0,
+          late: 0,
+          justified: 0
+        };
+      }
       summary[id].total += 1;
+      if (r.status === 'present') summary[id].present += 1;
       if (r.status === 'absent') summary[id].absent += 1;
       if (r.status === 'late') summary[id].late += 1;
+      if (r.status === 'justified') summary[id].justified += 1;
     });
 
-    return successResponse(res, Object.values(summary));
+    // Calculer le taux de présence pour chaque étudiant
+    const result = Object.values(summary).map(s => ({
+      ...s,
+      attendanceRate: s.total > 0 ? Math.round((s.present / s.total) * 100) : 0
+    }));
+
+    return successResponse(res, result);
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -132,19 +157,13 @@ exports.getGlobalStats = async (req, res) => {
       ])
     ]);
 
-    const attendanceObj = {
-      present: 0,
-      absent: 0,
-      late: 0,
-      rate: 92
-    };
-    
+    const attendanceObj = { present: 0, absent: 0, late: 0, rate: 92 };
     attendance.forEach(a => {
       if (a._id === 'present') attendanceObj.present = a.count;
       if (a._id === 'absent') attendanceObj.absent = a.count;
       if (a._id === 'late') attendanceObj.late = a.count;
     });
-    
+
     const totalAttendance = attendanceObj.present + attendanceObj.absent + attendanceObj.late;
     if (totalAttendance > 0) {
       attendanceObj.rate = Math.round((attendanceObj.present / totalAttendance) * 100);
@@ -183,20 +202,15 @@ exports.getGlobalStats = async (req, res) => {
   }
 };
 
-// ==================== RAPPORTS MENMANTS POUR ReportsPage.jsx ====================
-
 // Rapport trimestriel
 exports.getQuarterlyReport = async (req, res) => {
   try {
     const { academicYear, quarter } = req.query;
-    
-    // Récupérer les données réelles si disponibles
+
     const [students, fees, attendance] = await Promise.all([
       Student.countDocuments({ status: 'active' }),
       Fee.aggregate([{ $group: { _id: null, total: { $sum: '$amount' }, paid: { $sum: '$paidAmount' } } }]),
-      Attendance.aggregate([
-        { $group: { _id: '$status', count: { $sum: 1 } } }
-      ])
+      Attendance.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }])
     ]);
 
     const attendanceObj = { present: 0, absent: 0, late: 0 };
@@ -205,11 +219,13 @@ exports.getQuarterlyReport = async (req, res) => {
       if (a._id === 'absent') attendanceObj.absent = a.count;
       if (a._id === 'late') attendanceObj.late = a.count;
     });
-    
-    const totalAttendance = attendanceObj.present + attendanceObj.absent + attendanceObj.late;
-    const attendanceRate = totalAttendance > 0 ? Math.round((attendanceObj.present / totalAttendance) * 100) : 92;
 
-    const mockData = {
+    const totalAttendance = attendanceObj.present + attendanceObj.absent + attendanceObj.late;
+    const attendanceRate = totalAttendance > 0
+      ? Math.round((attendanceObj.present / totalAttendance) * 100)
+      : 92;
+
+    return successResponse(res, {
       activeStudents: students || 347,
       activeEnrollments: students || 347,
       newEnrollments: Math.round((students || 347) * 0.15),
@@ -224,7 +240,9 @@ exports.getQuarterlyReport = async (req, res) => {
         totalExpected: fees[0]?.total || 8240000,
         totalPaid: fees[0]?.paid || 6850000,
         totalPending: (fees[0]?.total || 8240000) - (fees[0]?.paid || 6850000),
-        collectionRate: fees[0]?.total > 0 ? ((fees[0]?.paid / fees[0]?.total) * 100).toFixed(2) : 83,
+        collectionRate: fees[0]?.total > 0
+          ? ((fees[0]?.paid / fees[0]?.total) * 100).toFixed(2)
+          : 83,
         pendingCount: 41
       },
       byLevel: [
@@ -240,12 +258,10 @@ exports.getQuarterlyReport = async (req, res) => {
         { name: 'L. Ouali', presents: 55, absents: 4, rate: 93 },
         { name: 'R. Meziane', presents: 54, absents: 5, rate: 92 }
       ],
-      period: `Trimestre ${quarter}`,
+      period: `Trimestre ${quarter || 1}`,
       academicYear,
       generatedAt: new Date().toISOString()
-    };
-    
-    return successResponse(res, mockData);
+    });
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -255,10 +271,9 @@ exports.getQuarterlyReport = async (req, res) => {
 exports.getSemesterReport = async (req, res) => {
   try {
     const { academicYear } = req.query;
-    
     const students = await Student.countDocuments({ status: 'active' });
-    
-    const mockData = {
+
+    return successResponse(res, {
       activeStudents: students || 347,
       activeEnrollments: students || 347,
       newEnrollments: Math.round((students || 347) * 0.25),
@@ -285,9 +300,7 @@ exports.getSemesterReport = async (req, res) => {
       period: 'Semestre 1',
       academicYear,
       generatedAt: new Date().toISOString()
-    };
-    
-    return successResponse(res, mockData);
+    });
   } catch (err) {
     return errorResponse(res, err.message);
   }
@@ -297,10 +310,9 @@ exports.getSemesterReport = async (req, res) => {
 exports.getAnnualReport = async (req, res) => {
   try {
     const { academicYear } = req.query;
-    
     const students = await Student.countDocuments({ status: 'active' });
-    
-    const mockData = {
+
+    return successResponse(res, {
       activeStudents: students || 347,
       activeEnrollments: students || 347,
       newEnrollments: Math.round((students || 347) * 0.35),
@@ -327,42 +339,39 @@ exports.getAnnualReport = async (req, res) => {
       period: 'Année complète',
       academicYear,
       generatedAt: new Date().toISOString()
-    };
-    
-    return successResponse(res, mockData);
+    });
   } catch (err) {
     return errorResponse(res, err.message);
   }
 };
 
-// Export PDF via API
+// Export PDF
 exports.exportReport = async (req, res) => {
   try {
     const { academicYear, type, quarter } = req.query;
-    
-    // Essayer d'utiliser pdfService s'il existe, sinon générer un PDF simple
+
     try {
       const PDFDocument = require('pdfkit');
       const doc = new PDFDocument();
-      
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=rapport_${type}_${academicYear}.pdf`);
-      
+
       doc.pipe(res);
-      
-      // Contenu du PDF
       doc.fontSize(20).text('Rapport Établissement', { align: 'center' });
       doc.moveDown();
-      doc.fontSize(12).text(`Type: ${type === 'quarterly' ? 'Rapport Trimestriel' : type === 'semester' ? 'Rapport Semestriel' : 'Rapport Annuel'}`, { align: 'center' });
+      doc.fontSize(12).text(
+        `Type: ${type === 'quarterly' ? 'Rapport Trimestriel' : type === 'semester' ? 'Rapport Semestriel' : 'Rapport Annuel'}`,
+        { align: 'center' }
+      );
       doc.text(`Année académique: ${academicYear}`, { align: 'center' });
       if (quarter) doc.text(`Trimestre: ${quarter}`, { align: 'center' });
       doc.text(`Généré le: ${new Date().toLocaleDateString('fr-FR')}`, { align: 'center' });
       doc.moveDown();
-      doc.fontSize(10).text('Ce document est un rapport officiel de l\'établissement.', { align: 'center' });
-      
+      doc.fontSize(10).text("Ce document est un rapport officiel de l'établissement.", { align: 'center' });
       doc.end();
+
     } catch (pdfError) {
-      // Fallback: retourner un JSON avec les données
       return successResponse(res, {
         message: 'Export PDF disponible via le frontend',
         data: { academicYear, type, quarter }

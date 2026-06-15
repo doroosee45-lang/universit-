@@ -1,4 +1,4 @@
-import { Briefcase, Building2, Calendar, User } from 'lucide-react';
+﻿import { Briefcase, Building2, Calendar, User } from 'lucide-react';
 import { internshipAPI } from '../../services/services';
 import { Card, Badge, Spinner } from '../../components/common';
 import { useFetch } from '../../components/hooks/UseFetch';
@@ -148,7 +148,7 @@ export default function StudentInternshipPage() {
           {(currentInternship.companyScore || currentInternship.academicScore || currentInternship.finalScore) && (
             <Card className="p-5">
               <h3 className="font-bold text-gray-800 mb-4">Évaluations</h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[
                   ['Note entreprise', currentInternship.companyScore],
                   ['Note académique', currentInternship.academicScore],

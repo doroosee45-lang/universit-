@@ -3,7 +3,7 @@ const Student = require('../models/Student.model');
 const User = require('../models/User.model');
 const { success, created, notFound, paginated, badRequest } = require('../utils/apiResponse');
 const { getPagination, buildSearchFilter, generateStudentId, getCurrentAcademicYear, generateToken } = require('../utils/helpers');
-const { exportStudentsToExcel, importStudentsFromExcel } = require('../services/Excel.service');
+const { exportStudentsToExcel, importStudentsFromExcel } = require('../services/excel.service');
 const { sendActivationEmail } = require('../services/email.service');
 
 // Génère un mot de passe temporaire lisible (12 chars)

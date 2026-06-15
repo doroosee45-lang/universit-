@@ -283,13 +283,17 @@ export default function HomePage() {
         .hp-subtext{font-size:15px;color:#6b7280;max-width:520px;margin:0 auto;line-height:1.72;}
 
         /* ── FEATURES ──────────────────────────────────── */
+        .hp-sec-feat{position:relative;padding:96px 5%;overflow:hidden;}
+        .hp-sec-feat-bg{position:absolute;inset:0;background-image:url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=1600&q=85');background-size:cover;background-position:center;background-attachment:fixed;}
+        .hp-sec-feat-overlay{position:absolute;inset:0;background:linear-gradient(135deg,rgba(15,23,42,.88) 0%,rgba(30,27,75,.82) 100%);}
+        .hp-sec-feat-content{position:relative;z-index:1;max-width:1200px;margin:0 auto;}
         .hp-feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
-        .hp-feat{background:#fff;border-radius:22px;padding:28px;border:1px solid #f0f0f0;box-shadow:0 2px 12px rgba(0,0,0,.04);transition:transform .25s,box-shadow .25s,border-color .25s;cursor:default;}
-        .hp-feat:hover{transform:translateY(-6px);box-shadow:0 18px 44px rgba(0,0,0,.1);border-color:transparent;}
+        .hp-feat{background:rgba(255,255,255,.07);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:22px;padding:28px;border:1px solid rgba(255,255,255,.12);transition:transform .25s,box-shadow .25s,background .25s;cursor:default;}
+        .hp-feat:hover{transform:translateY(-6px);box-shadow:0 20px 50px rgba(0,0,0,.35);background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22);}
         .hp-feat-ico{width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:18px;transition:transform .2s;}
         .hp-feat:hover .hp-feat-ico{transform:scale(1.1) rotate(-5deg);}
-        .hp-feat-title{font-size:15px;font-weight:700;color:#1e1b4b;margin-bottom:8px;}
-        .hp-feat-desc{font-size:13px;color:#6b7280;line-height:1.68;}
+        .hp-feat-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;}
+        .hp-feat-desc{font-size:13px;color:rgba(255,255,255,.65);line-height:1.68;}
 
         /* ── WHY US ────────────────────────────────────── */
         .hp-why-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:22px;}
@@ -380,6 +384,7 @@ export default function HomePage() {
 
         /* ══ RESPONSIVE ════════════════════════════════════════ */
         @media(max-width:900px){
+          .hp-sec-feat-bg{background-attachment:scroll;}
           .hp-nav-links{display:none;}
           .hp-menu-btn{display:flex;}
           .hp-hero-inner{grid-template-columns:1fr;gap:36px;}
@@ -491,7 +496,7 @@ export default function HomePage() {
               <div className="hp-hero-ring"/>
               <div className="hp-hero-photo">
                 <img
-                  src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1000&q=85"
+                  src="https://omedevservicefrontend.onrender.com/assets/os5-zDql6FmJ.jpeg"
                   alt="Étudiants Université ACAN"
                 />
               </div>
@@ -527,12 +532,14 @@ export default function HomePage() {
       </section>
 
       {/* ══ FEATURES ══════════════════════════════════════════════ */}
-      <section id="plateforme" className="hp-sec hp-sec-g">
-        <div className="hp-inner">
-          <div className="hp-center hp-rv">
-            <div className="hp-chip" style={{ background:'#eef2ff',color:'#6366f1' }}>Notre plateforme</div>
-            <h2 className="hp-h2">Tout ce dont vous avez besoin</h2>
-            <p className="hp-subtext">Une suite complète d'outils pensés pour simplifier la vie des étudiants, enseignants et administrateurs.</p>
+      <section id="plateforme" className="hp-sec-feat">
+        <div className="hp-sec-feat-bg"/>
+        <div className="hp-sec-feat-overlay"/>
+        <div className="hp-sec-feat-content">
+          <div className="hp-center hp-rv" style={{ marginBottom:60 }}>
+            <div className="hp-chip" style={{ background:'rgba(99,102,241,.25)',color:'#a5b4fc',border:'1px solid rgba(99,102,241,.3)' }}>Notre plateforme</div>
+            <h2 className="hp-h2" style={{ color:'#fff' }}>Tout ce dont vous avez besoin</h2>
+            <p className="hp-subtext" style={{ color:'rgba(255,255,255,.65)' }}>Une suite complète d'outils pensés pour simplifier la vie des étudiants, enseignants et administrateurs.</p>
           </div>
           <div className="hp-feat-grid">
             {FEATURES.map((f,i) => (

@@ -15,7 +15,7 @@ const { initSocket } = require('./config/socket');
 const { initJobs } = require('./Jobs/Index');
 const routes = require('./routes/Index');
 const errorMiddleware = require('./middleware/Error.middleware');
-const logger = require('./utils/Logger');
+const logger = require('./utils/logger');
 
 const app = express();
 const server = http.createServer(app);

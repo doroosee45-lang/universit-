@@ -11,7 +11,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
 // const connectDB = require('./config/database');
-const { initSocket } = require('./config/Socket');
+const { initSocket } = require('./config/socket');
 const { initJobs } = require('./Jobs/Index');
 const routes = require('./routes/Index');
 const errorMiddleware = require('./middleware/Error.middleware');

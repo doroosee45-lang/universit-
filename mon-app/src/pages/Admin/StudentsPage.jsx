@@ -4,7 +4,7 @@ import {
   Mail, Phone, Calendar, Hash, Camera, ChevronLeft, ChevronRight,
   RefreshCw, FileText, UserCheck, Award, AlertCircle, CheckCircle,
   MapPin, Globe, User, BookOpen, Loader2, LayoutList, LayoutGrid,
-  HeartHandshake,
+  HeartHandshake, UserX,
 } from 'lucide-react';
 import { studentAPI, programAPI } from '../../services/services';
 
@@ -339,6 +339,18 @@ export default function StudentsPage() {
     }
   }
 
+  async function handlePermanentDelete(s, e) {
+    e.stopPropagation();
+    if (!confirm(`Supprimer définitivement ${s.firstName} ${s.lastName} ? Cette action est irréversible.`)) return;
+    try {
+      await studentAPI.deletePermanent(s._id);
+      showToast('Étudiant supprimé définitivement.');
+      load();
+    } catch (err) {
+      showToast(err.message || 'Erreur.', 'error');
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-50">
@@ -544,6 +556,13 @@ export default function StudentsPage() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                        <button
+                          onClick={e => handlePermanentDelete(s, e)}
+                          className="p-1.5 text-slate-400 hover:text-white hover:bg-red-600 rounded-lg transition-colors"
+                          title="Supprimer définitivement"
+                        >
+                          <UserX className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -596,6 +615,13 @@ export default function StudentsPage() {
                       className="flex-1 py-1.5 text-xs font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                     >
                       Profil
+                    </button>
+                    <button
+                      onClick={e => handlePermanentDelete(s, e)}
+                      className="flex-1 py-1.5 text-xs font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Supprimer définitivement"
+                    >
+                      Supprimer
                     </button>
                   </div>
                 </div>

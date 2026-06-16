@@ -25,5 +25,6 @@ router.get('/:id', authorize(...VIEWERS), ctrl.getStudentById);
 router.post('/',   authorize(...ADMINS),  ctrl.createStudent);
 router.put('/:id', authorize(...ADMINS),  ctrl.updateStudent);
 router.delete('/:id', authorize(...ADMINS), ctrl.deleteStudent);
+router.delete('/:id/permanent', authorize(...ADMINS), ctrl.permanentlyDeleteStudent);
 
 module.exports = router;

@@ -115,6 +115,7 @@ export const studentAPI = {
   create:       (data)     => api.post('/students', data),
   update:       (id, data) => api.put(`/students/${id}`, data),
   delete:       (id)       => api.delete(`/students/${id}`),
+  deletePermanent: (id)    => api.delete(`/students/${id}/permanent`),
   exportExcel:  ()         => `${API_BASE}/students/export/excel`,
   importExcel:  (formData) => api.upload('/students/import/excel', formData),
   uploadPhoto:  (id, formData) => api.upload(`/students/${id}/photo`, formData),

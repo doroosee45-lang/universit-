@@ -148,6 +148,17 @@ const deleteStudent = async (req, res, next) => {
   }
 };
 
+// DELETE /api/students/:id/permanent (suppression définitive du compte)
+const permanentlyDeleteStudent = async (req, res, next) => {
+  try {
+    const student = await Student.findByIdAndDelete(req.params.id);
+    if (!student) return notFound(res, 'Étudiant introuvable.');
+    return success(res, null, 'Étudiant supprimé définitivement.');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /api/students/export/excel
 const exportStudents = async (req, res, next) => {
   try {
@@ -245,6 +256,7 @@ module.exports = {
   createStudent,
   updateStudent,
   deleteStudent,
+  permanentlyDeleteStudent,
   exportStudents,
   importStudents,
   uploadStudentPhoto

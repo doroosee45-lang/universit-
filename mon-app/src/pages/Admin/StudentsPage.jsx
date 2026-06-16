@@ -4,7 +4,7 @@ import {
   Mail, Phone, Calendar, Hash, Camera, ChevronLeft, ChevronRight,
   RefreshCw, FileText, UserCheck, Award, AlertCircle, CheckCircle,
   MapPin, Globe, User, BookOpen, Loader2, LayoutList, LayoutGrid,
-  HeartHandshake, UserX,
+  HeartHandshake, UserX, Copy, Link2, KeyRound,
 } from 'lucide-react';
 import { studentAPI, programAPI } from '../../services/services';
 
@@ -156,6 +156,8 @@ export default function StudentsPage() {
 
   // modal: { mode: 'view'|'form', student: null|{...} }
   const [modal,    setModal]    = useState(null);
+  // Identifiants affichés une seule fois après création (fallback si l'email n'arrive pas)
+  const [credentials, setCredentials] = useState(null);
   const [viewTab,  setViewTab]  = useState('profil');
   const [formTab,  setFormTab]  = useState('identite');
   const [form,     setForm]     = useState({ ...EMPTY, academicYear: currentAcYear() });
@@ -294,6 +296,7 @@ export default function StudentsPage() {
     setSaving(true);
     try {
       let student;
+      let newCredentials = null;
       if (modal.student) {
         const res = await studentAPI.update(modal.student._id, form);
         student = res.data;
@@ -301,6 +304,15 @@ export default function StudentsPage() {
       } else {
         const res = await studentAPI.create(form);
         student = res.data;
+        if (student?.tempPassword) {
+          newCredentials = {
+            name: `${student.firstName} ${student.lastName}`,
+            email: student.email,
+            studentId: student.studentId,
+            tempPassword: student.tempPassword,
+            activationUrl: student.activationUrl,
+          };
+        }
         showToast('Étudiant créé. Email d\'activation envoyé.');
       }
 
@@ -319,11 +331,17 @@ export default function StudentsPage() {
 
       closeModal();
       load();
+      if (newCredentials) setCredentials(newCredentials);
     } catch (e) {
       showToast(e.message || 'Erreur lors de la sauvegarde.', 'error');
     } finally {
       setSaving(false);
     }
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text);
+    showToast('Copié dans le presse-papier.');
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────
@@ -997,6 +1015,83 @@ export default function StudentsPage() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL : Identifiants étudiant (affichés une seule fois)
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {credentials && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setCredentials(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-t-2xl p-6 text-center">
+              <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <KeyRound className="w-7 h-7 text-white" />
+              </div>
+              <h2 className="text-lg font-bold text-white">Compte créé pour {credentials.name}</h2>
+              <p className="text-emerald-50 text-xs mt-1">
+                Un email d'activation a été envoyé. S'il n'arrive pas (spam, filtre…),
+                transmettez ces identifiants directement à l'étudiant.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-3">
+              {[
+                ['Matricule', credentials.studentId],
+                ['Email', credentials.email],
+                ['Mot de passe temporaire', credentials.tempPassword],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-slate-400">{label}</p>
+                    <p className="text-sm font-semibold text-slate-800 truncate font-mono">{value}</p>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(value)}
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0"
+                    title="Copier"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <Link2 className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                    <p className="text-[11px] text-indigo-500 font-medium">Lien d'activation (valide 48h)</p>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(credentials.activationUrl)}
+                    className="p-1.5 text-indigo-400 hover:text-indigo-700 hover:bg-indigo-100 rounded-lg transition-colors flex-shrink-0"
+                    title="Copier le lien"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-indigo-700 mt-1 break-all">{credentials.activationUrl}</p>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed pt-1">
+                L'étudiant peut aussi se connecter directement avec son email et ce mot de passe
+                temporaire (sans passer par le lien) — il sera invité à définir son mot de passe
+                personnel à la première connexion.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 pb-6">
+              <button onClick={() => setCredentials(null)} className="btn-primary">
+                J'ai noté, fermer
+              </button>
             </div>
           </div>
         </div>

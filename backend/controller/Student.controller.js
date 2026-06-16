@@ -106,9 +106,15 @@ const createStudent = async (req, res, next) => {
       console.error('Erreur envoi email activation:', err.message);
     });
 
-    // Ne pas renvoyer le mot de passe en clair dans la réponse
+    // Ne pas renvoyer le hash du mot de passe dans la réponse
     const studentOut = student.toObject();
     delete studentOut.password;
+
+    // Identifiants affichés une seule fois à l'admin : permet d'activer le
+    // compte manuellement (login direct ou lien d'activation) si l'email
+    // n'arrive pas (spam, filtre, etc.)
+    studentOut.tempPassword = tempPassword;
+    studentOut.activationUrl = `${process.env.CLIENT_URL}/activate-account/${rawActivationToken}`;
 
     return created(res, studentOut, `Étudiant créé. Email d'activation envoyé à ${email}.`);
   } catch (err) {
